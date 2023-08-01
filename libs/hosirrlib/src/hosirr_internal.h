@@ -90,11 +90,14 @@ typedef struct _hosirrlib
 {
     AMBI_RIR_STATUS ambiRIR_status;
     LS_RIR_STATUS lsRIR_status;
-    float* shir;
-    float* lsir;
+    float* shir;        // input SRIR [nSH x length]
+    float* stageir;     // staging buffer for processing [1 x length]
+    float* lsir;        // output LSIR [nLoudpkrs x length]
+    float* beamWeights; // analysis beamforming weights [nLoudpkrs x nSH]
     
     /* Misc. */
     int ambiRIRorder;
+    int nSH;
     int ambiRIRlength_samples;
     float ambiRIRlength_seconds;
     int ambiRIRsampleRate; 

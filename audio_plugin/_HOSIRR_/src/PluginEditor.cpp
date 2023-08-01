@@ -263,6 +263,8 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     CBnormScheme->addItem (TRANS("FuMa"), NORM_FUMA);
 
     /* add loudspeaker preset options */
+    CBoutputDirsPreset->addItem (TRANS("15ch SphCov"), LOUDSPEAKER_ARRAY_PRESET_15PX);
+    CBoutputDirsPreset->addItem (TRANS("16ch SphCov"), LOUDSPEAKER_ARRAY_PRESET_16PX);
     CBoutputDirsPreset->addItem (TRANS("5.x"), LOUDSPEAKER_ARRAY_PRESET_5PX);
     CBoutputDirsPreset->addItem (TRANS("7.x"), LOUDSPEAKER_ARRAY_PRESET_7PX);
     CBoutputDirsPreset->addItem (TRANS("8.x"), LOUDSPEAKER_ARRAY_PRESET_8PX);

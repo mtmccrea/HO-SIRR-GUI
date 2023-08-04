@@ -58,6 +58,37 @@ void hosirrlib_create
 {
     hosirrlib_data* pData = (hosirrlib_data*)malloc1d(sizeof(hosirrlib_data));
     *phHS = (void*)pData;
+
+    /* new hodecaylib */
+    
+    // depend only on nDir
+    pData->encBeamCoeffs = NULL;    // nSH x nDir
+    pData->decBeamCoeffs = NULL;    // nDir x nSH
+    pData->dirGainBuf    = NULL;    // nDir x nBand
+    pData->t60Buf        = NULL;    // nDir x nBand
+    
+    // depend on output design (nDir) AND input RIR (nSamp)
+    pData->rirBuf        = NULL;    // nSH x nSamp
+    pData->rirBuf_beams  = NULL;    // nDir x nSamp
+    pData->fdnBuf        = NULL;    // nDir x nSamp
+    pData->edcBuf_rir    = NULL;    // nDir x nBand x nSamp
+    pData->edcBuf_fdn    = NULL;    // nDir x nBand x nSamp
+    pData->edcBuf_shd    = NULL;    // nSH x nSamp
+    
+    // pending initializations
+    pData->nSH      = -1; // input vars (assume for now in params = out params)
+    pData->nSamp    = -1;
+    pData->shOrder  = -1;
+    pData->fs       = -1;
+    pData->duration = 0.0f;
+    pData->nDir     = -1; // analysis vars
+    
+    pData->nBand    = 8;
+    pData->outDesignBufsLoaded = false;
+    pData->procBufsLoaded = false;
+    pData->rirLoaded = false;
+    
+    /* original hosirrlib */
     
     pData->progress0_1 = 0.0f;
     pData->progressText = malloc1d(HOSIRR_PROGRESSTEXT_CHAR_LENGTH*sizeof(char));
@@ -65,16 +96,10 @@ void hosirrlib_create
     
     /* input AmbiRIR */
     pData->shir = NULL;
-    pData->stageir = NULL;
-    pData->beamWeights = NULL;
     pData->ambiRIR_status = AMBI_RIR_STATUS_NOT_LOADED;
     pData->ambiRIRorder = -1;
     pData->ambiRIRlength_seconds = pData->ambiRIRlength_samples = 0.0f;
     pData->ambiRIRsampleRate = 0;
-    
-    /* input AmbiRIR */
-    pData->stageir = NULL;
-    pData->ambiRIR_status = AMBI_RIR_STATUS_NOT_LOADED;
     
     /* output Loudspeaker array RIR */
     pData->lsir = NULL;
@@ -98,9 +123,24 @@ void hosirrlib_destroy
     hosirrlib_data *pData = (hosirrlib_data*)(*phHS);
     
     if (pData != NULL) {
+        
+        /* new hodecaylib */
+        
+        // depend only on output design (nDir)
+        free(pData->encBeamCoeffs);    // nSH x nDir
+        free(pData->decBeamCoeffs);    // nDir x nSH
+        free(pData->dirGainBuf);       // nDir x nBand
+        free(pData->t60Buf);           // nDir x nBand
+        // depend on output design (nDir) AND input RIR (nSamp)
+        free(pData->rirBuf_beams);     // nSH x nSamp
+        free(pData->fdnBuf);           // nDir x nSamp
+        free(pData->edcBuf_rir);       // nDir x nBand x nSamp
+        free(pData->edcBuf_fdn);       // nDir x nBand x nSamp
+        free(pData->edcBuf_shd);       // nSH x nSamp
+        
+        /* original hosirrlib */
+        
         free(pData->shir);
-        free(pData->stageir);
-        free(pData->beamWeights);
         free(pData->lsir);
         free(pData->progressText);
         free(pData);
@@ -108,10 +148,136 @@ void hosirrlib_destroy
     }
 }
 
-void hosirrlib_render
+// (re)allocate the buffers that depend only on the number of output channels
+void hosirrlib_allocOutDesignBufs
+    (void  *  const hHS)
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    
+    int nSH = pData->nSH;
+    int nDir = pData->nDir;
+    int nBand = pData->nBand;
+    
+    if (nSH < 0 || nDir < 0)
+        return; // TODO: handle fail case
+    
+    pData->encBeamCoeffs = (float**)realloc2d((void**)pData->encBeamCoeffs,
+                                              nSH, nDir, sizeof(float));
+    pData->decBeamCoeffs = (float**)realloc2d((void**)pData->decBeamCoeffs,
+                                              nDir, nSH, sizeof(float));
+    pData->dirGainBuf    = (float**)realloc2d((void**)pData->dirGainBuf,
+                                              nDir, nBand, sizeof(float));
+    pData->t60Buf        = (float**)realloc2d((void**)pData->t60Buf,
+                                              nDir, nBand, sizeof(float));
+    
+    pData->outDesignBufsLoaded = true;
+}
+
+// (re)allocate the buffers used for storing intermediate processing data
+void hosirrlib_allocProcBufs
+    (void  *  const hHS)
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    
+    int nSH   = pData->nSH;
+    int nDir  = pData->nDir;
+    int nBand = pData->nBand;
+    int nSamp = pData->nSamp;
+    
+    if (nSH < 0 || nDir < 0 || nSamp < 0)
+        return; // TODO: handle fail case
+    
+    // depend on output design (nDir) AND input RIR (nSamp)
+    pData->rirBuf_beams = (float**)realloc2d((void**)pData->rirBuf_beams,
+                                             nSH, nSamp,  sizeof(float));
+    pData->fdnBuf       = (float**)realloc2d((void**)pData->fdnBuf,
+                                             nDir, nSamp,  sizeof(float));
+    pData->edcBuf_rir   = (float***)realloc3d((void***)pData->edcBuf_rir,
+                                              nDir, nBand, nSamp, sizeof(float));
+    pData->edcBuf_fdn   = (float***)realloc3d((void***)pData->edcBuf_fdn,
+                                              nDir, nBand, nSamp, sizeof(float));
+    pData->edcBuf_shd   = (float**)realloc2d((void**)pData->edcBuf_shd,
+                                             nSH, nSamp, sizeof(float));
+    
+    if (!pData->outDesignBufsLoaded)
+        hosirrlib_allocOutDesignBufs(pData);
+    
+    pData->procBufsLoaded = true;
+}
+
+/* Set Functions (new) */
+
+int hosirrlib_setRIR
 (
-    void  *  const hHS
+    void* const hHS,
+    const float** H,
+    int numChannels,
+    int numSamples,
+    int sampleRate
 )
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    
+    /* Check channel count to see if input is actually in the SHD */
+    if (fabsf(sqrtf((float)numChannels) - floorf(sqrtf((float)numChannels))) > 0.0001f) {
+        
+        /* new vars */
+        pData->nSH = pData->nSamp = pData->shOrder = pData->fs = -1;
+        pData->duration = 0.0f;
+        pData->rirLoaded = false;
+        
+        /* old vars */
+        pData->ambiRIR_status = AMBI_RIR_STATUS_NOT_LOADED;
+        pData->ambiRIRorder = -1;
+        pData->ambiRIRlength_seconds = pData->ambiRIRlength_samples = 0.0f;
+        pData->ambiRIRsampleRate = 0;
+        return (int)(pData->ambiRIR_status);
+    }
+    
+    /* new vars */
+    pData->nSH      = numChannels;
+    pData->nSamp    = numSamples;
+    pData->shOrder  = SAF_MIN(sqrt(numChannels-1), MAX_SH_ORDER);
+    pData->fs       = sampleRate;
+    pData->duration = numSamples / sampleRate;
+    
+    /* (Re)Alloc and copy in input RIR */
+    pData->rirBuf = (float**)realloc2d((void**)pData->rirBuf, numChannels, numSamples, sizeof(float));
+    for(int i = 0; i < numChannels; i++)
+        utility_svvcopy(H[i], numSamples, pData->rirBuf[i]);
+    
+    /* set FLAGS */
+    pData->rirLoaded = true;
+    pData->procBufsLoaded = false;
+    
+    /* Alloc processing resources */
+    hosirrlib_allocProcBufs(pData);
+    
+    
+    /* old vars */
+    pData->ambiRIRorder = SAF_MIN(sqrt(numChannels-1), MAX_SH_ORDER);
+    pData->analysisOrder = pData->ambiRIRorder;
+    pData->ambiRIRlength_samples = numSamples;
+    pData->ambiRIRsampleRate = sampleRate;
+    pData->ambiRIRlength_seconds = (float)pData->ambiRIRlength_samples/(float)pData->ambiRIRsampleRate;
+    
+    // (re)allocate memory and copy in SH RIR data
+    pData->shir = (float**)realloc2d((void**)pData->shir, numChannels, numSamples, sizeof(float));
+    for(int i = 0; i < numChannels; i++)
+        utility_svvcopy(H[i], numSamples, pData->shir[i]);
+//        memcpy(&(pData->shir[i*numSamples]), H[i], numSamples * sizeof(float));
+
+    /* set FLAGS */
+    pData->ambiRIR_status = AMBI_RIR_STATUS_LOADED;
+    pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
+    
+    return (int)(pData->ambiRIR_status);
+}
+
+/* Render */
+
+void hosirrlib_render
+    (void  *  const hHS)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     
@@ -167,15 +333,20 @@ void hosirrlib_render
     shir = malloc1d(nSH * lSig * sizeof(float));
     switch(chOrdering){
         case CH_ACN:
-            memcpy(shir, pData->shir, nSH * lSig * sizeof(float));
+//            memcpy(shir, pData->shir, nSH * lSig * sizeof(float));
+            memcpy(shir, FLATTEN2D(pData->shir), nSH * lSig * sizeof(float));
             break;
         case CH_FUMA:
             /* only for first-order, convert to ACN */
             assert(nSH==4);
-            memcpy(&shir[0], &(pData->shir[0]), lSig * sizeof(float));
-            memcpy(&shir[1*lSig], &(pData->shir[3*lSig]), lSig * sizeof(float));
-            memcpy(&shir[2*lSig], &(pData->shir[1*lSig]), lSig * sizeof(float));
-            memcpy(&shir[3*lSig], &(pData->shir[2*lSig]), lSig * sizeof(float));
+            memcpy(&shir[0],      &(pData->shir[0][0]), lSig * sizeof(float));
+            memcpy(&shir[1*lSig], &(pData->shir[3][0]), lSig * sizeof(float));
+            memcpy(&shir[2*lSig], &(pData->shir[1][0]), lSig * sizeof(float));
+            memcpy(&shir[3*lSig], &(pData->shir[2][0]), lSig * sizeof(float));
+//            memcpy(&shir[0], &(pData->shir[0]), lSig * sizeof(float));
+//            memcpy(&shir[1*lSig], &(pData->shir[3*lSig]), lSig * sizeof(float));
+//            memcpy(&shir[2*lSig], &(pData->shir[1*lSig]), lSig * sizeof(float));
+//            memcpy(&shir[3*lSig], &(pData->shir[2*lSig]), lSig * sizeof(float));
             break;
     }
     
@@ -586,31 +757,6 @@ void hosirrlib_render
 
 /* Set Functions */
 
-void hosirrlib_setBroadBandFirstPeakFLAG(void* const hHS, int newState)
-{
-    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    pData->broadBandFirstPeakFLAG = newState;
-    pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
-}
-
-void hosirrlib_setWindowLength(void* const hHS, int newValue)
-{
-    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    /* round to nearest multiple of 2 */
-    pData->windowLength = newValue % 2 == 0 ? newValue : newValue + 2 - (newValue % 2);
-    /* clamp within bounds */
-    pData->windowLength = SAF_CLAMP(pData->windowLength, MIN_WINDOW_LENGTH, MAX_WINDOW_LENGTH);
-    pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
-}
-
-void hosirrlib_setWetDryBalance(void* const hHS, float newValue)
-{
-    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    pData->wetDryBalance = newValue;
-    pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
-}
-
-
 int hosirrlib_setAmbiRIR
 (
     void* const hHS,
@@ -640,18 +786,12 @@ int hosirrlib_setAmbiRIR
     pData->ambiRIRsampleRate = sampleRate;
     pData->ambiRIRlength_seconds = (float)pData->ambiRIRlength_samples/(float)pData->ambiRIRsampleRate;
     
-    // copy in SH RIR data
-    pData->shir = realloc1d(pData->shir, numChannels * numSamples * sizeof(float));
+    // (re)allocate memory and copy in SH RIR data
+    pData->shir = (float**)realloc2d((void**)pData->shir, numChannels, numSamples, sizeof(float));
     for(int i = 0; i < numChannels; i++)
-        memcpy(&(pData->shir[i*numSamples]), H[i], numSamples * sizeof(float));
-    
-    /* Analysis resources */
-    
-    // allocate memory for processing IR (1 channel) and zero it out
-    pData->stageir = realloc1d(pData->stageir, numSamples * sizeof(float));
-    memset(&(pData->stageir[0]), 0, numSamples * sizeof(float));
-    pData->beamWeights = realloc1d(pData->beamWeights, pData->nSH * pData->nLoudpkrs * sizeof(float));
-    
+        utility_svvcopy(H[i], numSamples, pData->shir[i]); // mtm
+//        memcpy(&(pData->shir[i*numSamples]), H[i], numSamples * sizeof(float));
+
     /* set FLAGS */
     pData->ambiRIR_status = AMBI_RIR_STATUS_LOADED;
     pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
@@ -659,100 +799,162 @@ int hosirrlib_setAmbiRIR
     return (int)(pData->ambiRIR_status);
 }
 
-float hosirrlib_computeBeamCoeffs
-(
-    void* const hHS,            // TODO: below pointers can come from member vars
-    int L,                      // SH order
-    SECTOR_PATTERNS pattern,
-    float* dirs_deg,            // [nDir x 2], deg
-    float* beamCoeffs,          // [nDir x nSH]
-    int nDir,
-    int nSH
-)
-{
-    /* see computeSectorCoeffsAP */
-    float normBeam, azi_dir, elev_dir;
-    float* w_l, *w_lm;
-    
-    nSH = (L+1)*(L+1);
-    w_l = malloc1d((L+1) * sizeof(float)); // degree weights of axisymmetric beam
-    w_lm = calloc1d(nSH, sizeof(float));   // mode weights of 1 direction (rotated beam)
-    switch(pattern){
-        case SECTOR_PATTERN_PWD: beamWeightsHypercardioid2Spherical(L, w_l); break;
-        case SECTOR_PATTERN_MAXRE: beamWeightsMaxEV(L, w_l); break;
-        case SECTOR_PATTERN_CARDIOID: beamWeightsCardioid2Spherical(L, w_l); break;
-    }
-    normBeam = (float)(L+1) / (float)nDir;
-    
-    for(int id = 0; id < nDir; id++){
-        /* rotate the pattern by rotating the coefficients */
-        azi_dir  = dirs_deg[id*2]   * SAF_PI/180.0f;
-        elev_dir = dirs_deg[id*2+1] * SAF_PI/180.0f;
-        rotateAxisCoeffsReal(L, w_l, SAF_PI/2.0f-elev_dir, azi_dir, w_lm);
-        
-        /* store coefficients */
-        for(int j = 0; j < nSH; j++){
-            beamCoeffs[id * nDir + j] = w_lm[j] * normBeam;
-        }
-    }
-    
-    free(w_l);
-    free(w_lm);
-
-    return normBeam; // for
-}
-
-void hosirrlib_getBeamformedSignal
-(
-    void * const hHS
-)
-{
-    
-}
-
-void hosirrlib_calcEDC_1ch(void* const hHS)
-{
-    
-}
-
-void hosirrlib_getOnsetSamp(void* const hHS)
-{
-    /* TEMP: copied from hosirrlib_render */
-    /* normalise such that peak of the omni is 1 */
-//    utility_simaxv(shir, lSig, &maxInd); /* index of max(abs(omni)) */
-//    peakNorm = 1.0f/fabsf(shir[maxInd]);
-//    utility_svsmul(shir, &peakNorm, nSH*lSig, shir);
+//void hosirrlib_calcEDC_1ch(void* const hHS)
+//{
+//    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+//    float* pCalcBuf = pData->stageBuf;
+//    int nSamples = pData->ambiRIRlength_samples;
+//    double sum = 0.0; // TODO: float or double?
+//    float edc0 = 0.f;
 //
-//    /* isolate first peak */
-//    if(BB1stPeak){
-//        utility_simaxv(shir, lSig, &maxInd); /* index of max(abs(omni)) */
+//    // reverse cummulative sum of signal energy
+//    for (int i = nSamples - 1; i > -1; i--) {
+//        // in-place on pCalcBuf: replace signal with its EDC
+//        sum += pCalcBuf[i] * pCalcBuf[i]; // energy
+//        pCalcBuf[i] = (float)(10.0 * log10(sum)); // store in dB
+//    }
+//    // normalize
+//    edc0 = pCalcBuf[0];
+//    for (int i = 0; i < nSamples; i++)
+//        pCalcBuf[i] -= edc0;
+//}
 //
-//        /* calculate window and extract peak */
-//        dirwinsize = 64;
-//        if(maxInd <dirwinsize/2)
-//            BB1stPeak=0;
-//        else{
-//            shir_tmp = malloc1d(nSH*lSig*sizeof(float));
-//            shir_tmp2 = malloc1d(nSH*lSig*sizeof(float));
-//            memcpy(shir_tmp, shir, nSH*lSig*sizeof(float));
-//            direct_win = calloc1d(nSH*lSig,sizeof(float));
-//            for(i=0; i<nSH; i++)
-//                getWindowingFunction(WINDOWING_FUNCTION_HANN, dirwinsize+1 /* force symmetry */, &direct_win[i*lSig + maxInd - dirwinsize/2]);
-//            shir_direct = malloc1d(nSH*lSig*sizeof(float));
-//            utility_svvmul(shir_tmp, direct_win, nSH*lSig, shir_direct);
+//void hosirrlib_T60fromEDC_1ch(
+//                              void* const hHS,
+//                              float start_dB,
+//                              float range_dB
+//                              )
+//{
+//    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+//    float* pCalcBuf = pData->stageBuf;
+//    int nSamples = pData->ambiRIRlength_samples;
+//    int st_samp = -1, end_samp = 0;
 //
-//            /* flip window and use it to remove peak from the input */
-//            for(i=0; i<nSH*lSig; i++)
-//                direct_win[i] = 1.0f-direct_win[i];
-//            utility_svvmul(shir_tmp, direct_win, nSH*lSig, shir_tmp2);
-//            memcpy(shir, shir_tmp2, nSH*lSig*sizeof(float));
+//    // reverse cummulative sum of signal energy
+//    for (int i = nSamples - 1; i > -1; i--) {
+//    }
+//    // normalize by EDC[0]
+//    for (int i = 0; i < nSamples; i++)
+//        pCalcBuf[i] /= sum;
+//}
 //
-//            free(shir_tmp);
-//            free(shir_tmp2);
-//            free(direct_win);
+//float hosirrlib_computeBeamCoeffs(
+//                                  void* const hHS,            // TODO: below pointers can come from member vars
+//                                  int L,                      // SH order
+//                                  SECTOR_PATTERNS pattern,
+//                                  float* dirs_deg,            // [nDir x 2], deg
+//                                  float* beamCoeffs,          // [nDir x nSH]
+//                                  int nDir,
+//                                  int nSH
+//                                )
+//{
+//    /* see computeSectorCoeffsAP */
+//    float normBeam, azi_dir, elev_dir;
+//    float* w_l, *w_lm;
+//
+//    nSH = (L+1)*(L+1);
+//    w_l = malloc1d((L+1) * sizeof(float)); // degree weights of axisymmetric beam
+//    w_lm = calloc1d(nSH, sizeof(float));   // mode weights of 1 direction (rotated beam)
+//    switch(pattern){
+//        case SECTOR_PATTERN_PWD: beamWeightsHypercardioid2Spherical(L, w_l); break;
+//        case SECTOR_PATTERN_MAXRE: beamWeightsMaxEV(L, w_l); break;
+//        case SECTOR_PATTERN_CARDIOID: beamWeightsCardioid2Spherical(L, w_l); break;
+//    }
+//    normBeam = (float)(L+1) / (float)nDir;
+//
+//    for(int id = 0; id < nDir; id++){
+//        /* rotate the pattern by rotating the coefficients */
+//        azi_dir  = dirs_deg[id*2]   * SAF_PI/180.0f;
+//        elev_dir = dirs_deg[id*2+1] * SAF_PI/180.0f;
+//        rotateAxisCoeffsReal(L, w_l, SAF_PI/2.0f-elev_dir, azi_dir, w_lm);
+//
+//        /* store coefficients */
+//        for(int j = 0; j < nSH; j++){
+//            beamCoeffs[id * nDir + j] = w_lm[j] * normBeam;
 //        }
 //    }
+//
+//    free(w_l);
+//    free(w_lm);
+//
+//    return normBeam; // for normalizing if desired
+//}
+//
+//void hosirrlib_getBeamformedSignal(void * const hHS)
+//{
+//
+//}
+//
+///* Apply LP, BPF, or HP to a monophonic signal */
+//void hosirrlib_getBandSignal(void* const hHS)
+//{
+//    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+//    float* pCalcBuf = pData->stageBuf;
+//}
+//
+//void hosirrlib_getOnsetSamp(void* const hHS)
+//{
+//    /* TEMP: copied from hosirrlib_render */
+//    /* normalise such that peak of the omni is 1 */
+////    utility_simaxv(shir, lSig, &maxInd); /* index of max(abs(omni)) */
+////    peakNorm = 1.0f/fabsf(shir[maxInd]);
+////    utility_svsmul(shir, &peakNorm, nSH*lSig, shir);
+////
+////    /* isolate first peak */
+////    if(BB1stPeak){
+////        utility_simaxv(shir, lSig, &maxInd); /* index of max(abs(omni)) */
+////
+////        /* calculate window and extract peak */
+////        dirwinsize = 64;
+////        if(maxInd <dirwinsize/2)
+////            BB1stPeak=0;
+////        else{
+////            shir_tmp = malloc1d(nSH*lSig*sizeof(float));
+////            shir_tmp2 = malloc1d(nSH*lSig*sizeof(float));
+////            memcpy(shir_tmp, shir, nSH*lSig*sizeof(float));
+////            direct_win = calloc1d(nSH*lSig,sizeof(float));
+////            for(i=0; i<nSH; i++)
+////                getWindowingFunction(WINDOWING_FUNCTION_HANN, dirwinsize+1 /* force symmetry */, &direct_win[i*lSig + maxInd - dirwinsize/2]);
+////            shir_direct = malloc1d(nSH*lSig*sizeof(float));
+////            utility_svvmul(shir_tmp, direct_win, nSH*lSig, shir_direct);
+////
+////            /* flip window and use it to remove peak from the input */
+////            for(i=0; i<nSH*lSig; i++)
+////                direct_win[i] = 1.0f-direct_win[i];
+////            utility_svvmul(shir_tmp, direct_win, nSH*lSig, shir_tmp2);
+////            memcpy(shir, shir_tmp2, nSH*lSig*sizeof(float));
+////
+////            free(shir_tmp);
+////            free(shir_tmp2);
+////            free(direct_win);
+////        }
+////    }
+//}
+
+void hosirrlib_setBroadBandFirstPeakFLAG(void* const hHS, int newState)
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    pData->broadBandFirstPeakFLAG = newState;
+    pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
 }
+
+void hosirrlib_setWindowLength(void* const hHS, int newValue)
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    /* round to nearest multiple of 2 */
+    pData->windowLength = newValue % 2 == 0 ? newValue : newValue + 2 - (newValue % 2);
+    /* clamp within bounds */
+    pData->windowLength = SAF_CLAMP(pData->windowLength, MIN_WINDOW_LENGTH, MAX_WINDOW_LENGTH);
+    pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
+}
+
+void hosirrlib_setWetDryBalance(void* const hHS, float newValue)
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    pData->wetDryBalance = newValue;
+    pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
+}
+
 
 void hosirrlib_setAnalysisOrder(void* const hHS, int newValue)
 {

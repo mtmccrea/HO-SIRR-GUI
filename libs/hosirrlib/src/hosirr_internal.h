@@ -90,14 +90,38 @@ typedef struct _hosirrlib
 {
     AMBI_RIR_STATUS ambiRIR_status;
     LS_RIR_STATUS lsRIR_status;
-    float* shir;        // input SRIR [nSH x length]
-    float* stageir;     // staging buffer for processing [1 x length]
-    float* lsir;        // output LSIR [nLoudpkrs x length]
-    float* beamWeights; // analysis beamforming weights [nLoudpkrs x nSH]
     
+    /* new hodecaylib */
+    
+    // depend only on nDir
+    float** encBeamCoeffs;  // nSH x nDir
+    float** decBeamCoeffs;  // nDir x nSH
+    float** dirGainBuf;     // nDir x nBand
+    float** t60Buf;         // nDir x nBand
+    
+    // depend on output design (nDir) AND input RIR (nSamp)
+    float** rirBuf;         // nSH x nSamp, input RIR
+    float** rirBuf_beams;   // nDir x nSamp
+    float** fdnBuf;         // nDir x nSamp
+    float*** edcBuf_rir;    // nDir x nBand x nSamp
+    float*** edcBuf_fdn;    // nDir x nBand x nSamp
+    float** edcBuf_shd;     // nSH x nSamp
+    
+    int nSH, nSamp, fs, shOrder; // input vars
+    int nDir, nBand;        // analysis vars
+    float duration;         // seconds
+    
+    bool outDesignBufsLoaded;
+    bool procBufsLoaded;
+    bool rirLoaded;
+    
+    /* original hosirrlib */
+    
+    float** shir;           // input SRIR [nSH x length]
+    float* lsir;            // output LSIR [nLoudpkrs x length]
+        
     /* Misc. */
     int ambiRIRorder;
-    int nSH;
     int ambiRIRlength_samples;
     float ambiRIRlength_seconds;
     int ambiRIRsampleRate; 

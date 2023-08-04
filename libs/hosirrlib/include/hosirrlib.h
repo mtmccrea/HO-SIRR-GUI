@@ -197,7 +197,24 @@ void hosirrlib_render(void* const hHS);
 /* ========================================================================== */
 /*                                Set Functions                               */
 /* ========================================================================== */
-    
+
+/**
+ * Load input Ambisonic (spherical harmonic) room impulse response (RIR) to be
+ * rendered by hosirrlib.
+ *
+ * @param[in] hHS         hosirrlib handle
+ * @param[in] H           The Ambisonic RIR; numChannels x numSamples
+ * @param[in] numChannels Number of channels in H
+ * @param[in] numSamples  Number of samples per channel in H
+ * @param[in] sampleRate  Sample rate of the loaded H
+ */
+int hosirrlib_setRIR(void* const hHS,
+                     const float** H,
+                     int numChannels,
+                     int numSamples,
+                     int sampleRate);
+
+
 /**
  * Sets a flag, as to whether the renderer should isolate the first peak in the
  * Ambisonic RIR and process it based on broad-band analysis (0:disabled,

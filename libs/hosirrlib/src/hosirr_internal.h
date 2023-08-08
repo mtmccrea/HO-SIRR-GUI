@@ -94,26 +94,32 @@ typedef struct _hosirrlib
     /* new hodecaylib */
     
     // depend only on nDir
-    float** encBeamCoeffs;  // nSH x nDir
+    float** encBeamCoeffs;  // nDir x nSH
     float** decBeamCoeffs;  // nDir x nSH
-    float** dirGainBuf;     // nDir x nBand
-    float** t60Buf;         // nDir x nBand
+    float** dirGainBuf;     // nBand x nDir
+    float** t60Buf;         // nBand x nDir
     
     // depend on output design (nDir) AND input RIR (nSamp)
-    float** rirBuf;         // nSH x nSamp, input RIR
-    float** rirBuf_beams;   // nDir x nSamp
-    float** fdnBuf;         // nDir x nSamp
-    float*** edcBuf_rir;    // nDir x nBand x nSamp
-    float*** edcBuf_fdn;    // nDir x nBand x nSamp
-    float** edcBuf_shd;     // nSH x nSamp
+    float**  rirBuf;        // nSH x nSamp (input RIR)
+    float*** rirBuf_bands;  // nBand x nSH x nSamp
+    float*** rirBuf_beams;  // nBand x nDir x nSamp
+    float*** edcBuf_rir;    // nBand x nDir x nSamp
+    float**  fdnBuf;        // nDir x nSamp
+    float*** edcBuf_fdn;    // nBand x nDir x nSamp
+    float**  fdnBuf_shd;    // nSH x nSamp (output RIR)
     
-    int nSH, nSamp, fs, shOrder; // input vars
-    int nDir, nBand;        // analysis vars
-    float duration;         // seconds
+    float** H_bandFilt;     // nBand x bandFiltOrder + 1
+    float* bandXOverFreqs;  // 1 x nBand-1
+    
+    int nSH, nSamp, fs, shOrder;    // input vars
+    int nDir, nBand, bandFiltOrder; // analysis vars
+    float duration;                 // seconds
     
     bool outDesignBufsLoaded;
     bool procBufsLoaded;
     bool rirLoaded;
+    bool bandsAreSplit, beamsAreFormed, t60Available, edcAvailable;
+    STATIC_BEAM_TYPES beamType;
     
     /* original hosirrlib */
     

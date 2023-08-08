@@ -106,6 +106,14 @@ typedef enum _LOUDSPEAKER_ARRAY_PRESETS{
     
 }LOUDSPEAKER_ARRAY_PRESETS;
 
+/** Available static beamforming approaches */
+typedef enum {
+    STATIC_BEAM_TYPE_CARDIOID = 1,  /**< cardioid */
+    STATIC_BEAM_TYPE_HYPERCARDIOID, /**< hyper-cardioid */
+    STATIC_BEAM_TYPE_MAX_EV         /**< hyper-cardioid with max_rE weighting */
+
+} STATIC_BEAM_TYPES;
+
 /**
  * Available Ambisonic channel ordering conventions
  *
@@ -215,6 +223,11 @@ int hosirrlib_setRIR(void* const hHS,
                      int sampleRate);
 
 
+void hosirrlib_calcEDC(void* const hHS);
+
+void hosirrlib_calcT60(void* const hHS);
+
+void hosirrlib_initBandFilters(void* const hHS)
 /**
  * Sets a flag, as to whether the renderer should isolate the first peak in the
  * Ambisonic RIR and process it based on broad-band analysis (0:disabled,

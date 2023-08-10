@@ -60,6 +60,28 @@ extern "C" {
 /*                             Presets + Constants                            */
 /* ========================================================================== */
 
+/** Available static beamforming approaches */
+typedef enum {
+    STATIC_BEAM_TYPE_CARDIOID = 1,  /**< cardioid */
+    STATIC_BEAM_TYPE_HYPERCARDIOID, /**< hyper-cardioid */
+    STATIC_BEAM_TYPE_MAX_EV         /**< hyper-cardioid with max_rE weighting */
+
+} STATIC_BEAM_TYPES;
+
+/** SRIR analysis stages */
+typedef enum {
+    RIR_NOT_LOADED = 1, /**< No RIR is set/loaded */
+    RIR_LOADED,         /**< RIR is read into member buffer */
+    ANALYSIS_BUFS_LOADED, /**< Staging buffers for intermediate processing are loaded */
+    DIRECT_ONSET_FOUND, /**< First arrival  position is found */
+    BANDS_SPLIT,        /**< RIR is split into bands */
+    BEAMFORMED,         /**< SHD signal has been beamformed into directional signals (by band)  */
+    EDC_DONE,           /**< EDCs are calculated for each beam/band */
+    T60_DONE,           /**< T60s are calculated for each beam/band */
+    DIFFUSENESS_ONSET_FOUND /**< T60s are calculated for each beam/band */
+} ANALYSIS_STAGE;
+
+
 /**
  * Available analysis/rendering order options
  */
@@ -105,14 +127,6 @@ typedef enum _LOUDSPEAKER_ARRAY_PRESETS{
     LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_60
     
 }LOUDSPEAKER_ARRAY_PRESETS;
-
-/** Available static beamforming approaches */
-typedef enum {
-    STATIC_BEAM_TYPE_CARDIOID = 1,  /**< cardioid */
-    STATIC_BEAM_TYPE_HYPERCARDIOID, /**< hyper-cardioid */
-    STATIC_BEAM_TYPE_MAX_EV         /**< hyper-cardioid with max_rE weighting */
-
-} STATIC_BEAM_TYPES;
 
 /**
  * Available Ambisonic channel ordering conventions
@@ -222,12 +236,22 @@ int hosirrlib_setRIR(void* const hHS,
                      int numSamples,
                      int sampleRate);
 
+void setRIRState_uninitialized(void* const hHS)
+
+int hosirrlib_getDirectOnsetIndex(void* const hHS, const float thresh_dB)
+
+void hosirrlib_initBandFilters(void* const hHS)
+
+void hosirrlib_splitBands(void* const hHS, bool removeFiltDelay)
 
 void hosirrlib_calcEDC(void* const hHS);
 
-void hosirrlib_calcT60(void* const hHS);
+void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb, const int beginIdx)
 
-void hosirrlib_initBandFilters(void* const hHS)
+// helper
+int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thresh)
+int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float thresh)
+
 /**
  * Sets a flag, as to whether the renderer should isolate the first peak in the
  * Ambisonic RIR and process it based on broad-band analysis (0:disabled,

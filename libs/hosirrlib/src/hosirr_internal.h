@@ -94,6 +94,7 @@ typedef struct _hosirrlib
     /* new hodecaylib */
     
     // depend only on nDir
+    // TODO: are const pointers overkill here?
     float** encBeamCoeffs;  // nDir x nSH
     float** decBeamCoeffs;  // nDir x nSH
     float** dirGainBuf;     // nBand x nDir
@@ -108,17 +109,16 @@ typedef struct _hosirrlib
     float*** edcBuf_fdn;    // nBand x nDir x nSamp
     float**  fdnBuf_shd;    // nSH x nSamp (output RIR)
     
-    float** H_bandFilt;     // nBand x bandFiltOrder + 1
-    float* bandXOverFreqs;  // 1 x nBand-1
+    float**  H_bandFilt;    // nBand x bandFiltOrder + 1
+    float*   bandXOverFreqs; // 1 x nBand-1
     
     int nSH, nSamp, fs, shOrder;    // input vars
     int nDir, nBand, bandFiltOrder; // analysis vars
+    int directOnsetIdx;
     float duration;                 // seconds
     
     bool outDesignBufsLoaded;
-    bool procBufsLoaded;
-    bool rirLoaded;
-    bool bandsAreSplit, beamsAreFormed, t60Available, edcAvailable;
+    ANALYSIS_STAGE analysisStage;
     STATIC_BEAM_TYPES beamType;
     
     /* original hosirrlib */

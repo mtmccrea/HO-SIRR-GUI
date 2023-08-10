@@ -78,25 +78,20 @@ void hosirrlib_create
     pData->H_bandFilt    = NULL;    // nBand x filtOrder+1
     pData->bandXOverFreqs = NULL;
     
-    // pending initializations
-    pData->nSH      = -1; // input vars (assume for now in params = out params)
-    pData->nSamp    = -1;
-    pData->shOrder  = -1;
-    pData->fs       = -1;
-    pData->duration = 0.0f;
-    pData->nDir     = -1; // analysis vars
+    /* zero out the state of buffer resources */
+    setRIRState_uninitialized(pData);
     
+    /* Initialize octave band filters */
     pData->nBand = 8;
     pData->bandFiltOrder = 400;
-    pData->outDesignBufsLoaded = false;
-    pData->procBufsLoaded = false;
-    pData->rirLoaded = false;
-    // TODO: replace these bools with a processingStage enum
-    pData->bandsAreSplit = false;
-    pData->beamsAreFormed = false;
-    pData->t60Available = false;
-    pData->edcAvailable = false;
+    hosirrlib_initBandFilters(pData);
+    
+    /* Initialize spherical desing for directional analysis */
     pData->beamType = STATIC_BEAM_TYPE_HYPERCARDIOID;
+    // default design currently just set by enum LOUDSPEAKER_ARRAY_PRESET_15PX
+    loadLoudspeakerArrayPreset(LOUDSPEAKER_ARRAY_PRESET_15PX, pData->loudpkrs_dirs_deg, &(pData->nLoudpkrs));
+    pData->nDir = pData->nLoudpkrs;
+    pData->outDesignBufsLoaded = false;
     
     /* original hosirrlib */
     
@@ -117,12 +112,101 @@ void hosirrlib_create
     
     /* default user parameters */
     pData->analysisOrder = 1;
-    loadLoudspeakerArrayPreset(LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_24, pData->loudpkrs_dirs_deg, &(pData->nLoudpkrs));
+    //loadLoudspeakerArrayPreset(LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_24, pData->loudpkrs_dirs_deg, &(pData->nLoudpkrs));
     pData->chOrdering = CH_ACN;
     pData->norm = NORM_SN3D;
     pData->broadBandFirstPeakFLAG = 1;
     pData->windowLength = DEFAULT_WINDOW_LENGTH;
     pData->wetDryBalance = 1.0f;
+}
+
+void setRIRState_uninitialized(void* const hHS)
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    
+    // pending initializations
+    pData->nSH = -1; // input vars (assume for now in params = out params)
+    pData->nSamp = -1;
+    pData->shOrder = -1;
+    pData->fs = -1;
+    pData->directOnsetIdx = -1;
+    pData->duration = 0.0f;
+    pData->analysisStage = RIR_NOT_LOADED;
+}
+
+
+int hosirrlib_getDirectOnsetIndex(void* const hHS, const float thresh_dB)
+/*
+    NOTE:   The naive approach is to consider the index of absolute max value
+            in the buffer. However, with synthetic RIRs, like from a shoebox,
+            coincident reflections may have greater magnitude than the direct
+            arrival. So this returns the index of the first value that crosses
+            the (max abs value - threshold).
+    TODO:   Could return true first _peak_.
+            This would require a second iteration, searching for a local max
+            within, say, 2 ms after the onset index.
+*/
+{ /*
+   * thresh_dB: threshold (pressure, dB) below the absolute max value in the
+   *            buffer, above which the onset is considered to have occured.
+   */
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+        
+    /* Check previous stages are complete */
+    if (pData->analysisStage < DIRECT_ONSET_FOUND-1)
+        return; // TODO: handle fail case
+    
+    const int nSamp = pData->nSamp;
+    
+    float* vabs_tmp = malloc1d(nSamp * sizeof(float));
+    
+    /* absolute values of the omni channel */
+    int maxIdx;
+    utility_svabs(&pData->rirBuf[0][0], nSamp, vabs_tmp); // abs(omni)
+    utility_simaxv(vabs_tmp, nSamp, &maxIdx); // index of max(abs(omni))
+    
+    /* index of first index above threshold */
+    float maxVal        = vabs_tmp[maxIdx];
+    float onsetThresh   = maxVal * powf(10.f, thresh_dB / 20.f);
+    int onsetIndex      = hosirrlib_firstIndexGreaterThan(vabs_tmp, 0, nSamp-1,
+                                                          onsetThresh);
+    pData->analysisStage = DIRECT_ONSET_FOUND;
+    free(vabs_tmp);
+    
+    return onsetIndex;
+}
+
+int hosirrlib_getDiffusenessOnsetIndex(void* const hHS, const float thresh_fac)
+{ /*
+   * thresh_fac: threshold (energy, dB) below the absolute max value in the
+   *            buffer, above which the onset is considered to have occured.
+   */
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+        
+    /* Check previous stages are complete */
+    if (pData->analysisStage < DIFFUSENESS_ONSET_FOUND-1)
+        return; // TODO: handle fail case
+    
+    const int nSamp = pData->nSamp;
+    
+    /* time domain diffuseness */
+    // TODO: diffuseness, see render function for FD processing
+    float* diff_tmp = malloc1d(nSamp * sizeof(float));
+    
+    
+    /* index of max(diffuseness) */
+    int maxIdx;
+    utility_simaxv(diff_tmp, nSamp, &maxIdx);
+    
+    /* index of first index above threshold */
+    float maxVal        = diff_tmp[maxIdx];
+    float onsetThresh   = maxVal * thresh_fac;
+    int   onsetIndex    = hosirrlib_firstIndexGreaterThan(diff_tmp, 0, nSamp-1,
+                                                          onsetThresh);
+    pData->analysisStage = DIFFUSENESS_ONSET_FOUND;
+    free(diff_tmp);
+    
+    return onsetIndex;
 }
 
 void hosirrlib_initBandFilters(void* const hHS)
@@ -161,31 +245,33 @@ void hosirrlib_splitBands(void* const hHS, bool removeFiltDelay)
     
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     
-    if (!pData->rirLoaded)
-        return; // TODO: handle
-        
-    const int nInSamp = pData->nSamp;
+    /* Check previous stages are complete */
+    if (pData->analysisStage < BANDS_SPLIT-1)
+        return; // TODO: handle fail case
+    
+    const int nInSamp   = pData->nSamp;
+    const int filtOrder = pData->bandFiltOrder;
+    
     int startCopyIdx;
     if (removeFiltDelay) {
-        // length of filter delay
-        startCopyIdx = (int)(pData->bandFiltOrder / 2.f);
+        startCopyIdx = (int)(filtOrder / 2.f); // length of filter delay (floor)
     } else {
         startCopyIdx = 0;
-    };
+    }
     
     /* Apply filterbank to rir_bands.
      * Because of fftconv's indexing, it expects filter coefficients
      * for each channel. So we do one channel and band at a time.
      * The output size will be nSamp + filtOrder.
      * See fftconv(): y_len = x_len + h_len - 1; */
-    const int nFilteredOutSamp = (pData->nSamp + pData->bandFiltOrder);
-    float* temp = malloc1d(nFilteredOutSamp * sizeof(float));
+    float* temp = malloc1d((nInSamp + filtOrder) * sizeof(float));
+    
     for(int ch = 0; ch < pData->nSH; ch++) {
         for(int bd = 0; bd < pData->nBand; bd++){
             fftconv(&pData->rirBuf[ch][0],      // input: 1 channel at a time
                     &pData->H_bandFilt[bd][0],  // band filter coeffs
                     nInSamp,                    // input length
-                    pData->bandFiltOrder + 1,   // filter length
+                    filtOrder + 1,              // filter length
                                                 // add 1 for internal rounding and compensate for out length calc y_len = x_len + h_len - 1; (?)
                     1,                          // 1 channel at a time
                     temp);
@@ -196,8 +282,7 @@ void hosirrlib_splitBands(void* const hHS, bool removeFiltDelay)
                    pData->nSamp * sizeof(float));
         }
     }
-    pData->bandsAreSplit = true;
-    
+    pData->analysisStage = BANDS_SPLIT;
     free(temp);
 }
 
@@ -205,8 +290,10 @@ void hosirrlib_beamformRIR(void* const hHS)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     
-    if (!pData->rirLoaded)
-        return; // TODO: handle
+    /* Check previous stages are complete */
+    if (pData->analysisStage < BEAMFORMED-1)
+        return; // TODO: handle fail case
+    
     const int nSamp = pData->nSamp;
     const int nChan = pData->nSamp;
     const int nBand = pData->nBand;
@@ -258,9 +345,8 @@ void hosirrlib_beamformRIR(void* const hHS)
                     (const float*)&pData->rirBuf_bands[bd][0][0], nSamp, // B, 1st dim of B
                     0.0f, // beta scalar for C
                     (float*)&pData->rirBuf_beams[bd][0][0], nSamp); // C, 1st dim of C
-    };
-    
-    pData->beamsAreFormed = true;
+    }
+    pData->analysisStage = BEAMFORMED;
 }
 
 void hosirrlib_destroy(void ** const phHS)
@@ -284,7 +370,7 @@ void hosirrlib_destroy(void ** const phHS)
         free(pData->fdnBuf);
         free(pData->edcBuf_fdn);
         free(pData->fdnBuf_shd);
-        
+        // unchanging after init
         free(pData->H_bandFilt);
         free(pData->bandXOverFreqs);
         
@@ -303,9 +389,9 @@ void hosirrlib_allocOutDesignBufs(void  *  const hHS)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     
-    int nSH = pData->nSH;
-    int nDir = pData->nDir;
-    int nBand = pData->nBand;
+    const int nSH = pData->nSH;
+    const int nDir = pData->nDir;
+    const int nBand = pData->nBand;
     
     if (nSH < 0 || nDir < 0)
         return; // TODO: handle fail case
@@ -318,23 +404,26 @@ void hosirrlib_allocOutDesignBufs(void  *  const hHS)
                                               nBand, nDir, sizeof(float));
     pData->t60Buf        = (float**)realloc2d((void**)pData->t60Buf,
                                               nBand, nDir, sizeof(float));
-    
     pData->outDesignBufsLoaded = true;
 }
 
 // (re)allocate the buffers used for storing intermediate processing data
-void hosirrlib_allocProcBufs(void  *  const hHS)
+void hosirrlib_allocProcBufs(void * const hHS)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+        
+    /* Check previous stages are complete */
+    if (pData->analysisStage < ANALYSIS_BUFS_LOADED-1)
+        return; // TODO: handle fail case
     
     const int nSH   = pData->nSH;
     const int nDir  = pData->nDir;
     const int nBand = pData->nBand;
     const int nSamp = pData->nSamp;
-    
+    /* Check member vars are set */
     if (nSH < 0 || nDir < 0 || nSamp < 0)
         return; // TODO: handle fail case
-    
+
     // TODO: remember to zero out any bufs that might need it
     
     // depend on output design (nDir) AND input RIR (nSamp)
@@ -353,7 +442,7 @@ void hosirrlib_allocProcBufs(void  *  const hHS)
     if (!pData->outDesignBufsLoaded)
         hosirrlib_allocOutDesignBufs(pData);
     
-    pData->procBufsLoaded = true;
+    pData->analysisStage = ANALYSIS_BUFS_LOADED;
 }
 
 /* Set Functions (new) */
@@ -373,9 +462,8 @@ int hosirrlib_setRIR
     if (fabsf(sqrtf((float)numChannels) - floorf(sqrtf((float)numChannels))) > 0.0001f) {
         
         /* new vars */
-        pData->nSH = pData->nSamp = pData->shOrder = pData->fs = -1;
-        pData->duration = 0.0f;
-        pData->rirLoaded = false;
+        // TODO: only set state to unitialized if there was no previous RIR loaded
+        //setRIRState_uninitialized(pData)
         
         /* old vars */
         pData->ambiRIR_status = AMBI_RIR_STATUS_NOT_LOADED;
@@ -398,16 +486,10 @@ int hosirrlib_setRIR
         utility_svvcopy(H[i], numSamples, pData->rirBuf[i]);
     
     /* set FLAGS */
-    pData->rirLoaded = true;
-    pData->procBufsLoaded = false;
-    pData->bandsAreSplit = false;
-    pData->beamsAreFormed = false;
-    pData->t60Available = false;
-    pData->edcAvailable = false;
+    pData->analysisStage = RIR_LOADED;
     
     /* Alloc processing resources */
     hosirrlib_allocProcBufs(pData);
-    
     
     /* old vars */
     pData->ambiRIRorder = SAF_MIN(sqrt(numChannels-1), MAX_SH_ORDER);
@@ -433,7 +515,8 @@ void hosirrlib_calcEDC(void* const hHS)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     
-    if (!pData->rirLoaded)
+    /* Check previous stages are complete */
+    if (pData->analysisStage < EDC_DONE-1)
         return; // TODO: handle
     
     const int nSamp = pData->nSamp;
@@ -441,154 +524,150 @@ void hosirrlib_calcEDC(void* const hHS)
     const int nBand = pData->nBand;
     const int nSH   = pData->nSH;
     
-    // NEED TO HANDLE BAND SPLITTING and BEAMFORMING
     /* Copy the RIR band beams into EDC buffer */
     utility_svvcopy(FLATTEN3D(pData->rirBuf_beams),
                     nBand * nSH * nSamp,
                     FLATTEN3D(pData->edcBuf_rir));
     
-    float ***edc = pData->edcBuf_rir;
+    float*** edc = pData->edcBuf_rir;
     double sum = 0.0; // TODO: double?
-    float edc0 = 0.f;
 
-    /* EDC: reverse cummulative sum of signal energy */
-    for (int ch = 0; ch < nChan; ch++) {
-        for (int bd = 0; bd < nBand; bd++) {
+    /* EDC: reverse cummulative sum of signal energy, one channel at a time */
+    for (int bd = 0; bd < nBand; bd++) {
+        for (int ch = 0; ch < nChan; ch++) {
             sum = 0.0;
             // reverse iterate for backwards cumulative sum
             for (int i = nSamp - 1; i > -1; i--) {
                 // in-place: replace signal with its EDC
                 // TODO: optim by vectorizing
-                sum += edc[ch][bd][i] * edc[ch][bd][i]; // energy
-                edc[ch][bd][i] = (float)(10.0 * log10(sum)); // store in dB
+                sum += edc[bd][ch][i] * edc[bd][ch][i]; // energy
+                edc[bd][ch][i] = (float)(10.0 * log10(sum)); // store in dB
+            }
+        }
+    }
+    pData->analysisStage = EDC_DONE;
+}
+
+
+void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb, const int beginIdx)
+{ /*
+   startDb  : measure the T60 starting at this level of decay
+              (after beginIdx), specify as negative (<= 0)
+   spanDb   : measure the T60 over this dB decay span (specify as positive)
+   beginIdx : start the search for measurement bounds at this point onward
+              e.g. a sample index after the first arrival
+              0 for the beginning of the EDC buffer
+   */
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    
+    /* Check previous stages are complete */
+    if (pData->analysisStage < T60_DONE-1)
+        return; // TODO: handle
+    
+    const int nSamp = pData->nSamp;
+    const int nChan = pData->nSamp;
+    const int nBand = pData->nBand;
+    const int nSH   = pData->nSH;
+    const float fs  = pData->fs;
+    
+    float ***edc = pData->edcBuf_rir;
+    
+    float* const x_slope1 = malloc1d(nSamp * sizeof(float)); // vector with slope of 1/samp
+    float* const y_edc0m = malloc1d(nSamp * sizeof(float)); // zero-mean EDC
+    float* const stage = malloc1d(nSamp * sizeof(float)); // zero-mean EDC
+    int*** const st_end_meas = (int***)malloc3d(nBand, nChan, 2, sizeof(int)); // start and end samples to measure t60 in each channel
+
+    /* find the start and end points of the measurement */
+    for (int bd = 0; bd < nBand; bd++) {
+        for (int ch = 0; ch < nChan; ch++) {
+            float edcMax = edc[bd][ch][beginIdx];
+            
+            int start_t60 = hosirrlib_firstIndexLessThan(&edc[bd][ch][0],
+                                                         beginIdx, nSamp - 1,
+                                                         edcMax + startDb); // startDb is negative
+            if (start_t60 < 0) {
+                // no value found below the start level // TODO: warn or error
+                st_end_meas[bd][ch][0] = 0; // fall back to the head of the EDC
+            } else {
+                st_end_meas[bd][ch][0] = start_t60;
+            }
+            
+            int end_t60 = hosirrlib_firstIndexLessThan(&edc[bd][ch][0],
+                                                       start_t60, nSamp - 1,
+                                                       edcMax + startDb - spanDb); // startDb is negative, spanDb is positive
+            if (end_t60 < 0) {
+                // no value found below startDb - spanDb // TODO: warn or error
+                // fall back to near the end of the EDC.. this will likely be quite inaccurate for high frequency bands!
+                st_end_meas[bd][ch][1] = (int)(0.7f * nSamp);
+            } else {
+                st_end_meas[bd][ch][1] = beginIdx + end_t60;
             }
         }
     }
     
-    // normalize by edc[0]
-    for (int ch = 0; ch < nChan; ch++) {
-        for (int bd = 0; bd < nBand; bd++) {
-            edc0 = edc[ch][bd][0];
-            // reverse iterate for backwards cumulative sum
-            for (int i = 0; i < nSamp; i++) {
-                // TODO: optim by vectorizing, utility_svssub
-                edc[ch][bd][i] -= edc0;
-            }
+    /* Calculate the line of best fit
+        // x0m : zero-mean vector of a line with a slope of 1/sample
+        // y0m : vector of edc values (over measurement span), with mean removed
+        x0m      = vec_idc - mean(vec_idc);
+        y0m      = edc_span - mean(edc_span);
+        dpc_db   = sum(x0m .* y0m) / sum(x0m.^2);   // decay per sample (dB)
+        t60_meas = (-60 / dpc_db) / fs;             //  T60
+     */
+    
+    /* Measure the t60 */
+    for (int bd = 0; bd < nBand; bd++) {
+        for (int ch = 0; ch < nChan; ch++) {
+            int st_meas    = st_end_meas[bd][ch][0];
+            int end_meas   = st_end_meas[bd][ch][1];
+            int nSamp_meas = end_meas - st_meas + 1;
+            
+            float y_mean = sumf(&edc[bd][ch][st_meas], nSamp_meas) / nSamp_meas;
+            
+            /* Construct a vector with a slope of 1:samp with zero mean */
+            float first_val = (nSamp_meas - 1) / 2.f; // first value
+            for (int i = 0; i < nSamp_meas; i++) {
+                x_slope1[i] = first_val + i;
+            };
+            // remove mean from EDC, in measured span
+            utility_svssub(&edc[bd][ch][st_meas], &y_mean, nSamp_meas, y_edc0m);
+            // covariance x * y and x * x
+            utility_svvmul(x_slope1, y_edc0m, nSamp_meas, stage);
+            float c_xy = sumf(stage, nSamp_meas);
+            utility_svvmul(x_slope1, x_slope1, nSamp_meas, stage);
+            float c_xx = sumf(stage, nSamp_meas);
+            // slope dB/samp
+            float dbPerSamp = c_xy / c_xx;
+            // write out
+            pData->t60Buf[bd][ch] = -60.f / dbPerSamp / fs;
+            // debug
+            printf("t60: dir %d band %d  %.2f sec\n", bd, ch, pData->t60Buf[bd][ch]);
         }
     }
+        
+    free(x_slope1);
+    free(y_edc0m);
+    free(stage);
+    free(st_end_meas);
+    pData->analysisStage = T60_DONE;
 }
 
-//void hosirrlib_T60fromEDC_1ch(
-//                              void* const hHS,
-//                              float start_dB,
-//                              float range_dB
-//                              )
-//{
-//    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-//    float* pCalcBuf = pData->stageBuf;
-//    int nSamples = pData->ambiRIRlength_samples;
-//    int st_samp = -1, end_samp = 0;
-//
-//    // reverse cummulative sum of signal energy
-//    for (int i = nSamples - 1; i > -1; i--) {
-//    }
-//    // normalize by EDC[0]
-//    for (int i = 0; i < nSamples; i++)
-//        pCalcBuf[i] /= sum;
-//}
-//
-//float hosirrlib_computeBeamCoeffs(
-//                                  void* const hHS,            // TODO: below pointers can come from member vars
-//                                  int L,                      // SH order
-//                                  SECTOR_PATTERNS pattern,
-//                                  float* dirs_deg,            // [nDir x 2], deg
-//                                  float* beamCoeffs,          // [nDir x nSH]
-//                                  int nDir,
-//                                  int nSH
-//                                )
-//{
-//    /* see computeSectorCoeffsAP */
-//    float normBeam, azi_dir, elev_dir;
-//    float* w_l, *w_lm;
-//
-//    nSH = (L+1)*(L+1);
-//    w_l = malloc1d((L+1) * sizeof(float)); // degree weights of axisymmetric beam
-//    w_lm = calloc1d(nSH, sizeof(float));   // mode weights of 1 direction (rotated beam)
-//    switch(pattern){
-//        case SECTOR_PATTERN_PWD: beamWeightsHypercardioid2Spherical(L, w_l); break;
-//        case SECTOR_PATTERN_MAXRE: beamWeightsMaxEV(L, w_l); break;
-//        case SECTOR_PATTERN_CARDIOID: beamWeightsCardioid2Spherical(L, w_l); break;
-//    }
-//    normBeam = (float)(L+1) / (float)nDir;
-//
-//    for(int id = 0; id < nDir; id++){
-//        /* rotate the pattern by rotating the coefficients */
-//        azi_dir  = dirs_deg[id*2]   * SAF_PI/180.0f;
-//        elev_dir = dirs_deg[id*2+1] * SAF_PI/180.0f;
-//        rotateAxisCoeffsReal(L, w_l, SAF_PI/2.0f-elev_dir, azi_dir, w_lm);
-//
-//        /* store coefficients */
-//        for(int j = 0; j < nSH; j++){
-//            beamCoeffs[id * nDir + j] = w_lm[j] * normBeam;
-//        }
-//    }
-//
-//    free(w_l);
-//    free(w_lm);
-//
-//    return normBeam; // for normalizing if desired
-//}
-//
-//void hosirrlib_getBeamformedSignal(void * const hHS)
-//{
-//
-//}
-//
-///* Apply LP, BPF, or HP to a monophonic signal */
-//void hosirrlib_getBandSignal(void* const hHS)
-//{
-//    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-//    float* pCalcBuf = pData->stageBuf;
-//}
-//
-//void hosirrlib_getOnsetSamp(void* const hHS)
-//{
-//    /* TEMP: copied from hosirrlib_render */
-//    /* normalise such that peak of the omni is 1 */
-////    utility_simaxv(shir, lSig, &maxInd); /* index of max(abs(omni)) */
-////    peakNorm = 1.0f/fabsf(shir[maxInd]);
-////    utility_svsmul(shir, &peakNorm, nSH*lSig, shir);
-////
-////    /* isolate first peak */
-////    if(BB1stPeak){
-////        utility_simaxv(shir, lSig, &maxInd); /* index of max(abs(omni)) */
-////
-////        /* calculate window and extract peak */
-////        dirwinsize = 64;
-////        if(maxInd <dirwinsize/2)
-////            BB1stPeak=0;
-////        else{
-////            shir_tmp = malloc1d(nSH*lSig*sizeof(float));
-////            shir_tmp2 = malloc1d(nSH*lSig*sizeof(float));
-////            memcpy(shir_tmp, shir, nSH*lSig*sizeof(float));
-////            direct_win = calloc1d(nSH*lSig,sizeof(float));
-////            for(i=0; i<nSH; i++)
-////                getWindowingFunction(WINDOWING_FUNCTION_HANN, dirwinsize+1 /* force symmetry */, &direct_win[i*lSig + maxInd - dirwinsize/2]);
-////            shir_direct = malloc1d(nSH*lSig*sizeof(float));
-////            utility_svvmul(shir_tmp, direct_win, nSH*lSig, shir_direct);
-////
-////            /* flip window and use it to remove peak from the input */
-////            for(i=0; i<nSH*lSig; i++)
-////                direct_win[i] = 1.0f-direct_win[i];
-////            utility_svvmul(shir_tmp, direct_win, nSH*lSig, shir_tmp2);
-////            memcpy(shir, shir_tmp2, nSH*lSig*sizeof(float));
-////
-////            free(shir_tmp);
-////            free(shir_tmp2);
-////            free(direct_win);
-////        }
-////    }
-//}
+int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thresh)
+{
+    for (int i = startIdx; i < endIdx+1; i++) {
+        if (vec[i] < thresh)
+            return i;
+    }
+    return -1;
+}
+
+int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float thresh)
+{
+    for (int i = startIdx; i < endIdx+1; i++) {
+        if (vec[i] > thresh)
+            return i;
+    }
+    return -1;
+}
 
 /* Render */
 

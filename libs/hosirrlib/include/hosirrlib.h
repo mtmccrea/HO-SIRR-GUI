@@ -238,7 +238,9 @@ int hosirrlib_setRIR(void* const hHS,
 
 void setRIRState_uninitialized(void* const hHS)
 
-int hosirrlib_getDirectOnsetIndex(void* const hHS, const float thresh_dB)
+void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB)
+
+void hosirrlib_setDiffusenessOnsetIndex(void* const hHS, const float thresh_fac)
 
 void hosirrlib_initBandFilters(void* const hHS)
 

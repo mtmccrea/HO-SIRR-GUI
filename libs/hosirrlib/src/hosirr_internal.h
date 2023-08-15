@@ -114,7 +114,7 @@ typedef struct _hosirrlib
     
     int nSH, nSamp, fs, shOrder;    // input vars
     int nDir, nBand, bandFiltOrder; // analysis vars
-    int directOnsetIdx;
+    int directOnsetIdx, diffuseOnsetIdx;
     float duration;                 // seconds
     
     bool outDesignBufsLoaded;

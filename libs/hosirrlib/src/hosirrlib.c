@@ -130,12 +130,13 @@ void setRIRState_uninitialized(void* const hHS)
     pData->shOrder = -1;
     pData->fs = -1;
     pData->directOnsetIdx = -1;
+    pData->diffuseOnsetIdx = -1;
     pData->duration = 0.0f;
     pData->analysisStage = RIR_NOT_LOADED;
 }
 
 
-int hosirrlib_getDirectOnsetIndex(void* const hHS, const float thresh_dB)
+void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB)
 /*
     NOTE:   The naive approach is to consider the index of absolute max value
             in the buffer. However, with synthetic RIRs, like from a shoebox,
@@ -168,15 +169,14 @@ int hosirrlib_getDirectOnsetIndex(void* const hHS, const float thresh_dB)
     /* index of first index above threshold */
     float maxVal        = vabs_tmp[maxIdx];
     float onsetThresh   = maxVal * powf(10.f, thresh_dB / 20.f);
-    int onsetIndex      = hosirrlib_firstIndexGreaterThan(vabs_tmp, 0, nSamp-1,
+    pData->directOnsetIdx = hosirrlib_firstIndexGreaterThan(vabs_tmp, 0, nSamp-1,
                                                           onsetThresh);
+    
     pData->analysisStage = DIRECT_ONSET_FOUND;
     free(vabs_tmp);
-    
-    return onsetIndex;
 }
 
-int hosirrlib_getDiffusenessOnsetIndex(void* const hHS, const float thresh_fac)
+void hosirrlib_setDiffusenessOnsetIndex(void* const hHS, const float thresh_fac)
 { /*
    * thresh_fac: threshold (energy, dB) below the absolute max value in the
    *            buffer, above which the onset is considered to have occured.
@@ -186,27 +186,186 @@ int hosirrlib_getDiffusenessOnsetIndex(void* const hHS, const float thresh_fac)
     /* Check previous stages are complete */
     if (pData->analysisStage < DIFFUSENESS_ONSET_FOUND-1)
         return; // TODO: handle fail case
+    /* Check if processing should actually go-ahead */
+    if(pData->ambiRIR_status != AMBI_RIR_STATUS_LOADED ||
+       pData->lsRIR_status == LS_RIR_STATUS_RENDERED ||
+       pData->lsRIR_status == LS_RIR_STATUS_RENDEREDING_ONGOING)
+        return;
+    else
+        pData->lsRIR_status = LS_RIR_STATUS_RENDEREDING_ONGOING;
     
-    const int nSamp = pData->nSamp;
+    /* take a local copy of current configuration to be thread safe */
+    const int   nChan   = pData->nDir;
+    const int   nBand   = pData->nBand;
+    // const int   nSH     = pData->nSH;
+    const int   nPV     = 4; // working on WXYZ only
+    const float fs      = pData->fs;
+    const int   order   = pData->shOrder;
+    const int   lSig    = pData->nSamp;
+    const int   winsize = pData->windowLength;
     
-    /* time domain diffuseness */
-    // TODO: diffuseness, see render function for FD processing
-    float* diff_tmp = malloc1d(nSamp * sizeof(float));
+    /* Inits */
+    const int fftsize   = winsize*2;
+    const int hopsize   = winsize/2;     /* half the window size time-resolution */
+    const int nBins_anl = winsize/2 + 1; /* nBins used for analysis */
+    const int nBins_syn = fftsize/2 + 1; /* nBins used for synthesis */
+    const int lSig_pad  = winsize/2 + winsize*2 + lSig; // winsize/2 at head, sinsize*2 at tail
+    float_complex pvCOV[4][4];
     
+    /* Max freq bin to calculate diffuseness */
+    float nearestVal = 10e5f;
+    int   maxDiffFreq_idx = 0;
+    for(int i = 0; i < nBins_anl; i++){
+        // bin_idx * binwidth (Hz)
+        float tmp = fabsf((float)i * (fs / (float)winsize) - MAX_DIFF_FREQ_HZ); // TODO: should be fs/fftsize, not fs/winsize?
+        if(tmp < nearestVal){
+            nearestVal = tmp;
+            maxDiffFreq_idx = i;
+        }
+    }
+    
+    float* pvir, * pvir_pad, * win, * insig_win, * diff_win;
+    float_complex* inspec_anl, * inspec_syn, * wxyzspec_win;
+    void* hFFT_syn, *hFFT_anl; // for FFT
+    
+    /* make local copy of current Ambi RIR, in WXYZ ordering */
+    
+    // NOTE: Assumes ACN-N3D
+    pvir = malloc1d(nPV * lSig * sizeof(float)); // TODO: pvir to 2D ptr? (float**)malloc2d(nPV, lSig, sizeof(float));
+    int xyzOrder[4] = {0, 3, 1, 2}; // w y z x -> w x y z
+    for(int i = 0; i < nPV; i++) {
+        int inChan = xyzOrder[i];
+        memcpy(&pvir[i * lSig], &pData->rirBuf[inChan][0], lSig * sizeof(float));
+    };
+    float velScale = 1.f / sqrtf(3.f);
+    /* scale XYZ to normalized velocity */
+    utility_svsmul(&pvir[1 * lSig], &velScale, 3 * lSig, &pvir[1 * lSig]);
+    
+    /* freq domain diffuseness */
+    
+    /* normalise such that peak of the omni is 1 */
+    int peakIdx;
+    float peakNorm;
+    utility_simaxv(pvir, lSig, &peakIdx); /* index of max(abs(omni)) */
+    peakNorm = 1.0f / fabsf(pvir[peakIdx]);
+    utility_svsmul(pvir, &peakNorm, nPV * lSig, pvir);
+    
+    
+    /* zero pad the signal's start and end for STFT */
+    // winsize/2 at head, winsize*2 at tail
+    pvir_pad = calloc1d(nPV * lSig_pad, sizeof(float));
+    for(int i = 0; i < nPV; i++) {
+        memcpy(&pvir_pad[i * lSig_pad + winsize/2],
+               &(pvir[i * lSig]),
+               lSig * sizeof(float));
+    }
+    
+    /* transform window (symmetric Hann - 'hanning' in matlab) */
+    win = malloc1d(winsize * sizeof(float));
+    for(int i = 0; i < winsize; i++)
+        win[i] = powf( sinf((float)i * (M_PI / (float)winsize)), 2.0f );
+    
+    /* mem alloc for diffuseness of each window */
+    int nDiffFrames = (int)((lSig + 2 * winsize) / hopsize + 0.5f);
+    diff_win = calloc1d(nDiffFrames, sizeof(float));
+    
+    /* Main processing */
+    
+    strcpy(pData->progressText,"HOSIRR - Rendering");
+    
+    // mem alloc for a single frame of processing
+    insig_win    = calloc1d(fftsize, sizeof(float));
+    inspec_anl   = calloc1d(nPV * nBins_anl, sizeof(float_complex)); // ma->ca
+    inspec_syn   = calloc1d(nPV * nBins_syn, sizeof(float_complex)); // ma->ca
+    wxyzspec_win = malloc1d(4 * nBins_anl * sizeof(float_complex));
+    saf_rfft_create(&hFFT_syn, fftsize);
+    saf_rfft_create(&hFFT_anl, fftsize/2);
+    
+    /* window-hopping loop */
+    int idx = 0;
+    int frameCount = 0;
+    while (idx + winsize < lSig + 2 * winsize)
+    {
+        /* update progress */
+        pData->progress0_1 = (float)idx / (float)(lSig + 2 * winsize);
+ 
+        /* Window input and transform to frequency domain */
+        for(int i = 0; i < nPV; i++){
+            for(int j = 0; j < winsize; j++)
+                insig_win[j] = win[j] * pvir_pad[i*lSig_pad + idx + j];
+            // fft
+            saf_rfft_forward(hFFT_syn, insig_win, &inspec_syn[i * nBins_syn]);
+            // trim to just analysis bins
+            for(int j = 0, k = 0; j < nBins_anl; j++, k += fftsize/winsize)
+                inspec_anl[i * nBins_anl + j] = inspec_syn[i * nBins_syn + k];
+        }
+        
+        for(int i = 0; i < nPV; i++)
+            memcpy(&wxyzspec_win[i * nBins_anl],
+                   &inspec_anl[i * nBins_anl],
+                   nBins_anl * sizeof(float_complex));
+                    
+        /* Compute broad-band active-intensity vector */
+        // TODO: This could perhaps be simplified, since we're not really using the full covariance matrix
+        const float_complex calpha = cmplxf(1.0f, 0.0f), cbeta = cmplxf(0.0f, 0.0f);
+        float intensity[3];
+        float energy = 0.0f;
+        cblas_cgemm(CblasRowMajor, CblasNoTrans, CblasConjTrans, 4, 4, maxDiffFreq_idx+1, &calpha,
+                    wxyzspec_win, nBins_anl,
+                    wxyzspec_win, nBins_anl, &cbeta,
+                    FLATTEN2D(pvCOV), 4);
+        for(int i = 0; i < 3; i++)
+            intensity[i] = crealf(pvCOV[1+i][0]);
+        for(int i = 0; i < 4; i++)
+            energy += crealf(pvCOV[i][i])*0.5f;
+        
+        /* Estimating and time averaging of boadband diffuseness */
+        float ixyz_smooth[3];
+        float energy_smooth;
+        float prev_ixyz_smooth[3] = {0.f, 0.f, 0.f};
+        float prev_energy_smooth = 0.f;
+        float normIntensity_smooth = 0.0f;
+        
+        for(int i = 0; i < 3; i++) {
+            ixyz_smooth[i] = ((1.0f-ALPHA_DIFF_COEFF) * intensity[i]) + (ALPHA_DIFF_COEFF * prev_ixyz_smooth[i]);
+            prev_ixyz_smooth[i] = ixyz_smooth[i];
+            normIntensity_smooth += powf( fabsf(ixyz_smooth[i]), 2.0f ); // TODO: abs unnecessary?
+        }
+        energy_smooth = ((1.0f-ALPHA_DIFF_COEFF) * energy) + (ALPHA_DIFF_COEFF * prev_energy_smooth);
+        prev_energy_smooth = energy_smooth;
+        normIntensity_smooth = sqrtf(normIntensity_smooth);
+        // store broadband diffuseness value
+        diff_win[frameCount] = 1.0f - (normIntensity_smooth / (energy_smooth + 2.23e-10f));
+        
+        idx += hopsize;
+        frameCount++;
+    }
+    
+    /* diffuse onset */
     
     /* index of max(diffuseness) */
     int maxIdx;
-    utility_simaxv(diff_tmp, nSamp, &maxIdx);
+    utility_simaxv(diff_win, nDiffFrames, &maxIdx);
     
     /* index of first index above threshold */
-    float maxVal        = diff_tmp[maxIdx];
-    float onsetThresh   = maxVal * thresh_fac;
-    int   onsetIndex    = hosirrlib_firstIndexGreaterThan(diff_tmp, 0, nSamp-1,
-                                                          onsetThresh);
-    pData->analysisStage = DIFFUSENESS_ONSET_FOUND;
-    free(diff_tmp);
+    float maxVal = diff_win[maxIdx];
+    float onsetThresh = maxVal * thresh_fac;
+    int onsetWinIdx = hosirrlib_firstIndexGreaterThan(diff_win, 0, nDiffFrames-1, onsetThresh);
+    pData->diffuseOnsetIdx = onsetWinIdx * hopsize + ((int)hopsize/2); // place onset in the middle of the analysis window
     
-    return onsetIndex;
+    pData->analysisStage = DIFFUSENESS_ONSET_FOUND;
+
+    // TODO: free things
+    free(pvir);
+    free(pvir_pad);
+    free(win);
+    free(insig_win);
+    free(diff_win);
+    free(inspec_anl);
+    free(inspec_syn);
+    free(wxyzspec_win);
+    saf_rfft_destroy(&hFFT_syn);
+    saf_rfft_destroy(&hFFT_anl);
 }
 
 void hosirrlib_initBandFilters(void* const hHS)
@@ -295,7 +454,7 @@ void hosirrlib_beamformRIR(void* const hHS)
         return; // TODO: handle fail case
     
     const int nSamp = pData->nSamp;
-    const int nChan = pData->nSamp;
+    const int nChan = pData->nDir;
     const int nBand = pData->nBand;
     const int nSH   = pData->nSH;
     const int shOrder = pData->shOrder;
@@ -520,7 +679,7 @@ void hosirrlib_calcEDC(void* const hHS)
         return; // TODO: handle
     
     const int nSamp = pData->nSamp;
-    const int nChan = pData->nSamp;
+    const int nChan = pData->nDir;
     const int nBand = pData->nBand;
     const int nSH   = pData->nSH;
     
@@ -565,7 +724,7 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
         return; // TODO: handle
     
     const int nSamp = pData->nSamp;
-    const int nChan = pData->nSamp;
+    const int nChan = pData->nDir;
     const int nBand = pData->nBand;
     const int nSH   = pData->nSH;
     const float fs  = pData->fs;
@@ -680,11 +839,11 @@ void hosirrlib_render
     int i, j, k, n, ch, maxInd, dirwinsize, BB1stPeak, order, nSH, winsize, nLS;
     int N_gtable, N_tri, aziRes, elevRes, N_azi, aziIndex, elevIndex, idx3d;
     int numSec, order_sec, nSH_sec, delay, frameCount;
-    int fftsize, hopsize, nBins_anl, nBins_syn, maxDiffFreq_Ind, rir_len;
+    int fftsize, hopsize, nBins_anl, nBins_syn, maxDiffFreq_idx, rir_len;
     int o[MAX_SH_ORDER+2];
     int idx, jl, lSig, lSig_pad;
     float fs, wetDry, peakNorm, normSec, nearestVal, tmp, a2eNorm;
-    float intensity[3], diff_intensity[3], energy, diff_energy, normSecIntensity;
+    float intensity[3], ixyz_smoothed[3], energy, energy_smoothed, normSecIntensity_smoothed;
     //float t60[6] = {0.07f, 0.07f, 0.06f, 0.04f, 0.02f, 0.01f};
     float t60[6] = {0.2f, 0.2f, 0.16f, 0.12f, 0.09f, 0.04};
     float fc[6] = {125.0f, 250.0f, 500.0f, 1000.0f, 2000.0f, 4000.0f};
@@ -692,7 +851,7 @@ void hosirrlib_render
     float IntensityBB_XYZ[3];
     float* shir, *shir_tmp, *shir_tmp2, *direct_win, *shir_direct, *shir_pad, *gtable, *sec_dirs_deg, *sectorCoeffs_tmp;
     float* lsir_ndiff, *lsir_diff, *win, *Y_enc_tmp, *D_ls_tmp;
-    float* prev_diff_energy, *prev_diff_intensity, *azim, *elev, *diffs;
+    float* prev_energy_smoothed, *prev_ixyz_smooth, *azim, *elev, *diffs;
     float* insig_win, *ndiffs_sqrt, *lsir_win, *M_ifft, *M_ifft_fl, *rir_filt;
     float_complex* A_xyz, *sectorCoeffs, *sectorCoeffs_syn, *Y_enc, *D_ls;
     float_complex* inspec_syn, *inspec_anl, *s_anl, *WXYZ_sec, *z_diff, *z_00;
@@ -795,7 +954,7 @@ void hosirrlib_render
     }
     
     /* zero pad the signal's start and end for STFT */
-    lSig_pad = winsize/2 + winsize*2 + lSig;
+    lSig_pad = winsize/2 + winsize*2 + lSig; // winsize/2 at head, sinsize*2 at tail
     shir_pad = calloc1d(nSH*lSig_pad, sizeof(float));
     for(i=0; i<nSH; i++)
         memcpy(&shir_pad[i*lSig_pad + winsize/2], &(shir[i*lSig]), lSig*sizeof(float));
@@ -837,7 +996,7 @@ void hosirrlib_render
         tmp = fabsf((float)i*(fs/(float)winsize) - MAX_DIFF_FREQ_HZ);
         if(tmp < nearestVal){
             nearestVal = tmp;
-            maxDiffFreq_Ind = i;
+            maxDiffFreq_idx = i;
         }
     }
     
@@ -878,8 +1037,8 @@ void hosirrlib_render
     lsir_ndiff = calloc1d(nLS * (lSig + (2*fftsize)), sizeof(float));
     lsir_diff  = calloc1d(nLS * (lSig + (2*fftsize)), sizeof(float));
     lsir_win = malloc1d(fftsize * sizeof(float));
-    prev_diff_energy = calloc1d(numSec, sizeof(float));
-    prev_diff_intensity = calloc1d(numSec*3, sizeof(float));
+    prev_energy_smoothed = calloc1d(numSec, sizeof(float));
+    prev_ixyz_smooth = calloc1d(numSec*3, sizeof(float));
     azim = malloc1d(numSec*nBins_anl*sizeof(float));
     elev = malloc1d(numSec*nBins_anl*sizeof(float));
     diffs = malloc1d(numSec*nBins_anl*sizeof(float));
@@ -938,7 +1097,7 @@ void hosirrlib_render
             }
                 
             /* Compute broad-band active-intensity vector */
-            cblas_cgemm(CblasRowMajor, CblasNoTrans, CblasConjTrans, 4, 4, maxDiffFreq_Ind+1, &calpha,
+            cblas_cgemm(CblasRowMajor, CblasNoTrans, CblasConjTrans, 4, 4, maxDiffFreq_idx+1, &calpha,
                         WXYZ_sec, nBins_anl,
                         WXYZ_sec, nBins_anl, &cbeta,
                         FLATTEN2D(pvCOV), 4);
@@ -949,17 +1108,17 @@ void hosirrlib_render
                 energy += crealf(pvCOV[i][i])*0.5f;
             
             /* Estimating and time averaging of boadband diffuseness */
-            normSecIntensity = 0.0f;
+            normSecIntensity_smoothed = 0.0f;
             for(i=0; i<3; i++){
-                diff_intensity[i] = (1.0f-ALPHA_DIFF_COEFF)*intensity[i] + ALPHA_DIFF_COEFF*prev_diff_intensity[n*3+i];
-                prev_diff_intensity[n*3+i] = diff_intensity[i];
-                normSecIntensity += powf(fabsf(diff_intensity[i]), 2.0f);
+                ixyz_smoothed[i] = (1.0f-ALPHA_DIFF_COEFF)*intensity[i] + ALPHA_DIFF_COEFF*prev_ixyz_smooth[n*3+i];
+                prev_ixyz_smooth[n*3+i] = ixyz_smoothed[i];
+                normSecIntensity_smoothed += powf(fabsf(ixyz_smoothed[i]), 2.0f);
             }
-            diff_energy = (1.0f-ALPHA_DIFF_COEFF)*energy + ALPHA_DIFF_COEFF*prev_diff_energy[n];
-            prev_diff_energy[n] = diff_energy;
-            normSecIntensity = sqrtf(normSecIntensity);
+            energy_smoothed = (1.0f-ALPHA_DIFF_COEFF)*energy + ALPHA_DIFF_COEFF*prev_energy_smoothed[n];
+            prev_energy_smoothed[n] = energy_smoothed;
+            normSecIntensity_smoothed = sqrtf(normSecIntensity_smoothed);
             for(i=0; i<nBins_anl; i++)
-                diffs[n*nBins_anl+i] = 1.0f - normSecIntensity/(diff_energy+2.23e-10f);
+                diffs[n*nBins_anl+i] = 1.0f - (normSecIntensity_smoothed / (energy_smoothed+2.23e-10f));
         }
         
         /* SIRR Synthesis for each sector */
@@ -1124,8 +1283,8 @@ void hosirrlib_render
     free(lsir_ndiff);
     free(lsir_diff);
     free(lsir_win);
-    free(prev_diff_energy);
-    free(prev_diff_intensity);
+    free(prev_energy_smoothed);
+    free(prev_ixyz_smooth);
     free(azim);
     free(elev);
     free(diffs);

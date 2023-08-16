@@ -74,11 +74,15 @@ typedef enum {
     RIR_LOADED,         /**< RIR is read into member buffer */
     ANALYSIS_BUFS_LOADED, /**< Staging buffers for intermediate processing are loaded */
     DIRECT_ONSET_FOUND, /**< First arrival  position is found */
-    BANDS_SPLIT,        /**< RIR is split into bands */
+    DIFFUSENESS_ONSET_FOUND, /**< T60s are calculated for each beam/band */
+    RIR_BANDS_SPLIT,        /**< RIR is split into bands */
     BEAMFORMED,         /**< SHD signal has been beamformed into directional signals (by band)  */
-    EDC_DONE,           /**< EDCs are calculated for each beam/band */
+    RIR_EDC_DONE,           /**< EDCs are calculated for each beam/band */
     T60_DONE,           /**< T60s are calculated for each beam/band */
-    DIFFUSENESS_ONSET_FOUND /**< T60s are calculated for each beam/band */
+    RIR_PROCESSED,      /**< RIR has been fully processed and ready for FDN synthesis */
+    FDN_BANDS_SPLIT,        /**< FDN is split into bands */
+    FDN_EDC_DONE,           /**< EDCs are calculated for each beam/band of the FDN channels */
+    DIRGAIN_DONE        /**< Directional gain has been calculated between FDN and RIR channels/bands */
 } ANALYSIS_STAGE;
 
 
@@ -220,39 +224,31 @@ void hosirrlib_render(void* const hHS);
 /*                                Set Functions                               */
 /* ========================================================================== */
 
-/**
- * Load input Ambisonic (spherical harmonic) room impulse response (RIR) to be
- * rendered by hosirrlib.
- *
- * @param[in] hHS         hosirrlib handle
- * @param[in] H           The Ambisonic RIR; numChannels x numSamples
- * @param[in] numChannels Number of channels in H
- * @param[in] numSamples  Number of samples per channel in H
- * @param[in] sampleRate  Sample rate of the loaded H
- */
+/* Create */
+void hosirrlib_initBandFilters(void* const hHS);
+
+/* Set RIR */
 int hosirrlib_setRIR(void* const hHS,
                      const float** H,
                      int numChannels,
                      int numSamples,
                      int sampleRate);
+void hosirrlib_setUninitialized(void* const hHS);
+void hosirrlib_allocProcBufs(void * const hHS);
 
-void setRIRState_uninitialized(void* const hHS)
+/* Proccess RIR */
+void hosirrlib_processRIR(void* const hHS);
+void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB);
+void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac);
+void hosirrlib_splitBands(void* const hHS, float** const inBuf, float*** const bndBuf, int removeFiltDelayFLAG, ANALYSIS_STAGE stage);
+void hosirrlib_beamformRIR(void* const hHS);
+void hosirrlib_calcEDC(void* const hHS, float*** const inBuf, float*** const edcBuf, ANALYSIS_STAGE stage);
+void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb, const int beginIdx);
 
-void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB)
+/* Helpers */
+int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thresh);
+int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float thresh);
 
-void hosirrlib_setDiffusenessOnsetIndex(void* const hHS, const float thresh_fac)
-
-void hosirrlib_initBandFilters(void* const hHS)
-
-void hosirrlib_splitBands(void* const hHS, bool removeFiltDelay)
-
-void hosirrlib_calcEDC(void* const hHS);
-
-void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb, const int beginIdx)
-
-// helper
-int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thresh)
-int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float thresh)
 
 /**
  * Sets a flag, as to whether the renderer should isolate the first peak in the

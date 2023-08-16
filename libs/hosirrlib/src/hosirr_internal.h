@@ -106,6 +106,7 @@ typedef struct _hosirrlib
     float*** rirBuf_beams;  // nBand x nDir x nSamp
     float*** edcBuf_rir;    // nBand x nDir x nSamp
     float**  fdnBuf;        // nDir x nSamp
+    float*** fdnBuf_bands;  // nBand nDir x nSamp
     float*** edcBuf_fdn;    // nBand x nDir x nSamp
     float**  fdnBuf_shd;    // nSH x nSamp (output RIR)
     
@@ -117,7 +118,6 @@ typedef struct _hosirrlib
     int directOnsetIdx, diffuseOnsetIdx;
     float duration;                 // seconds
     
-    bool outDesignBufsLoaded;
     ANALYSIS_STAGE analysisStage;
     STATIC_BEAM_TYPES beamType;
     

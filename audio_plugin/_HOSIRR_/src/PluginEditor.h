@@ -117,7 +117,8 @@ private:
                 reader->read (&fileBuffer, 0, (int) reader->lengthInSamples, 0, true, true);
             }
             const float** H = fileBuffer.getArrayOfReadPointers();
-            hosirrlib_setAmbiRIR(hHS, H, fileBuffer.getNumChannels(), fileBuffer.getNumSamples(), (int)reader->sampleRate);
+//            hosirrlib_setAmbiRIR(hHS, H, fileBuffer.getNumChannels(), fileBuffer.getNumSamples(), (int)reader->sampleRate);
+            hosirrlib_setRIR(hHS, H, fileBuffer.getNumChannels(), fileBuffer.getNumSamples(), (int)reader->sampleRate);
 
         }
     }
@@ -129,6 +130,13 @@ private:
     float dispTimeTrim;
     float dispGain_dB;
     RIR_VIEW_WAV_LABELS currentView;
+    
+    /* RIR display 2 mtm */
+    std::unique_ptr<Viewport> RIRviewVP2;
+    AudioThumbnailCache thumbnailCache2;
+    RIRview* thumbnailComp2;
+    RIR_VIEW_WAV_LABELS currentView2;
+
 
     /* warnings */
     HOSIRR_WARNINGS currentWarning;
@@ -156,6 +164,7 @@ private:
     std::unique_ptr<juce::Slider> SL_wetDryBalance;
     std::unique_ptr<juce::Slider> SL_windowSize;
     std::unique_ptr<juce::ComboBox> CBdisplayRIR;
+    std::unique_ptr<juce::ComboBox> CBdisplayRIR2; // mtm
     std::unique_ptr<juce::Slider> SL_displayGain;
     std::unique_ptr<juce::Slider> SL_displayTimeTrim;
     std::unique_ptr<juce::ToggleButton> tb_BroadBand1stPeak;

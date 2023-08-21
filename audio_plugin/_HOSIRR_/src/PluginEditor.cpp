@@ -30,7 +30,7 @@
 //==============================================================================
 PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     : AudioProcessorEditor(ownerFilter), progressbar(progress), fileChooser ("File", File(), true, false, false, "*.wav", String(),
-      "Load *.wav File"), thumbnailCache (5)
+      "Load *.wav File"), thumbnailCache (5), thumbnailCache2 (5) // mtm
 {
     //[Constructor_pre] You can add your own custom stuff here..
     //[/Constructor_pre]
@@ -185,6 +185,19 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     CBdisplayRIR->addListener (this);
 
     CBdisplayRIR->setBounds (21, 229, 99, 18);
+    
+    // mtm
+    CBdisplayRIR2.reset (new juce::ComboBox ("new combo box"));
+    addAndMakeVisible (CBdisplayRIR2.get());
+    CBdisplayRIR2->setEditableText (false);
+    CBdisplayRIR2->setJustificationType (juce::Justification::centredLeft);
+    CBdisplayRIR2->setTextWhenNothingSelected (TRANS("Ambi RIR"));
+    CBdisplayRIR2->setTextWhenNoChoicesAvailable (TRANS("(no choices)"));
+    CBdisplayRIR2->addListener (this);
+
+    CBdisplayRIR2->setBounds (21, 229+150, 99, 18);
+    
+    
 
     SL_displayGain.reset (new juce::Slider ("new slider"));
     addAndMakeVisible (SL_displayGain.get());
@@ -219,7 +232,7 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     //[UserPreSize]
     //[/UserPreSize]
 
-    setSize (656, 380);
+    setSize (656, 680);
 
 
     //[Constructor] You can add your own custom stuff here..
@@ -332,6 +345,20 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     currentView = RIR_VIEW_SH_LABELS;
     thumbnailComp->setLabelsView(currentView);
     CBdisplayRIR->addItem (TRANS("Ambi RIR"), RIR_VIEW_SH_LABELS);
+    
+    /* RIR display 2 mtm */
+    RIRviewVP2.reset (new Viewport ("new viewport"));
+    addAndMakeVisible (RIRviewVP2.get());
+    thumbnailComp2 = new RIRview(2048, formatManager, thumbnailCache, RIRview_width, RIRview_height);
+    RIRviewVP2->setViewedComponent(thumbnailComp2);
+    RIRviewVP2->setBounds(22, 254+RIRview_height+50, RIRview_width+8, RIRview_height);
+    dispTimeTrim = 1.0f;
+    dispGain_dB = 0.0f;
+    thumbnailComp2->setTimeTrim(dispTimeTrim);
+    thumbnailComp2->setGain_dB(dispGain_dB);
+    currentView2 = RIR_VIEW_SH_LABELS;
+    thumbnailComp2->setLabelsView(currentView2);
+    CBdisplayRIR2->addItem (TRANS("EDC"), RIR_VIEW_SH_LABELS);
     ///CBdisplayRIR->addItem (TRANS("LS RIR"), RIR_VIEW_LS_LABELS);
 
     /* grab current parameter settings */
@@ -344,6 +371,7 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     SL_displayGain->setValue(dispGain_dB, dontSendNotification);
     SL_displayTimeTrim->setValue(dispTimeTrim, dontSendNotification);
     CBdisplayRIR->setSelectedId(currentView, dontSendNotification);
+    CBdisplayRIR2->setSelectedId(currentView2, dontSendNotification); // mtm
     SL_windowSize->setValue(hosirrlib_getWindowLength(hHS), dontSendNotification);
     SL_wetDryBalance->setValue(hosirrlib_getWetDryBalance(hHS), dontSendNotification);
     tb_BroadBand1stPeak->setToggleState((bool)hosirrlib_getBroadBandFirstPeakFLAG(hHS), dontSendNotification);
@@ -1060,7 +1088,8 @@ void PluginEditor::buttonClicked (juce::Button* buttonThatWasClicked)
         //[UserButtonCode_tb_render] -- add your button handler code here..
         if(!RenderingInProgress){
             try{
-                std::thread render_thread(hosirrlib_render, hHS);
+//                std::thread render_thread(hosirrlib_render, hHS);
+                std::thread render_thread(hosirrlib_renderTMP, hHS);
                 render_thread.detach();
             } catch (const std::exception& exception) {
                 std::cout << "Could not create thread to render" << exception.what() << std::endl;
@@ -1087,7 +1116,7 @@ void PluginEditor::buttonClicked (juce::Button* buttonThatWasClicked)
                     buffer.setSize(hosirrlib_getNumLoudspeakers(hHS), hosirrlib_getAmbiRIRlength_samples(hHS));
                     buffer.clear();
                     float** lsRIR = buffer.getArrayOfWritePointers();
-                    hosirrlib_getLsRIR(hHS, lsRIR);
+                    hosirrlib_getLsRIR(hHS, lsRIR); // populates lsRIR var, mtm
 
                     /* write audio buffer to disk */
                     WavAudioFormat wavFormat;

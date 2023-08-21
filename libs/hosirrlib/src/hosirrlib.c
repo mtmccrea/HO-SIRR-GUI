@@ -160,9 +160,11 @@ void hosirrlib_destroy(void ** const phHS)
 void hosirrlib_initBandFilters(void* const hHS)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    
+    printf("initBandFilters called.\n");
     // if this is the first time this function is called...
     if (pData->H_bandFilt == NULL) {
+        
+        pData->bandXOverFreqs = malloc1d((pData->nBand-1) * sizeof(float));
         
         // 'bandFreqs' are basically center freqs used to determine crossover freqs.
         // The lowest and highest bands are LP and HP filters, so 125 Hz isn't really a "center freq" of the LPF. And the HPF "center freq" would implicitly be 16kHz.
@@ -195,6 +197,7 @@ int hosirrlib_setRIR
 )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("setRIR called\n");
     
     /* Check channel count to see if input is actually in the SHD */
     if (fabsf(sqrtf((float)numChannels) - floorf(sqrtf((float)numChannels))) > 0.0001f) {
@@ -202,6 +205,7 @@ int hosirrlib_setRIR
         /* new vars */
         // TODO: only set state to unitialized if there was no previous RIR loaded
         //setRIRState_uninitialized(pData)
+        printf("Input file doesn't appear to be a SHD file\n");
         
         /* old vars */
         pData->ambiRIR_status = AMBI_RIR_STATUS_NOT_LOADED;
@@ -252,7 +256,7 @@ int hosirrlib_setRIR
 void hosirrlib_setUninitialized(void* const hHS)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    
+    printf("setUninitialized called.\n");
     // pending initializations
     pData->nSH = -1; // input vars (assume for now in params = out params)
     pData->nSamp = -1;
@@ -268,10 +272,10 @@ void hosirrlib_setUninitialized(void* const hHS)
 void hosirrlib_allocProcBufs(void * const hHS)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    
+    printf("allocProcBufs called\n");
     /* Check previous stages are complete */
     if (pData->analysisStage < ANALYSIS_BUFS_LOADED-1) {
-        printf("allocProcBufs called before previous stages were completed.");
+        printf("allocProcBufs called before previous stages were completed: %d\n", pData->analysisStage);
         return; // TODO: handle fail case
     }
     
@@ -290,10 +294,10 @@ void hosirrlib_allocProcBufs(void * const hHS)
                                               nBand, nDir, nSamp, sizeof(float));
     pData->edcBuf_fdn   = (float***)realloc3d((void***)pData->edcBuf_fdn,
                                               nBand, nDir, nSamp, sizeof(float));
+    pData->fdnBuf_bands = (float***)realloc3d((void***)pData->fdnBuf_bands,
+                                             nBand, nDir, nSamp, sizeof(float));
     pData->fdnBuf       = (float**)realloc2d((void**)pData->fdnBuf,
                                              nDir, nSamp, sizeof(float));
-    pData->fdnBuf_bands = (float***)realloc3d((void***)pData->fdnBuf,
-                                             nBand, nDir, nSamp, sizeof(float));
     pData->fdnBuf_shd   = (float**)realloc2d((void**)pData->fdnBuf_shd,
                                              nSH, nSamp, sizeof(float));
     pData->encBeamCoeffs = (float**)realloc2d((void**)pData->encBeamCoeffs,
@@ -310,14 +314,37 @@ void hosirrlib_allocProcBufs(void * const hHS)
     pData->analysisStage = ANALYSIS_BUFS_LOADED;
 }
 
+void hosirrlib_renderTMP
+    (void  *  const hHS)
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("hosirrlib_renderTMP called.\n");
+    /* Check if processing should actually go-ahead */
+    if(pData->ambiRIR_status != AMBI_RIR_STATUS_LOADED ||
+       pData->lsRIR_status == LS_RIR_STATUS_RENDERED ||
+       pData->lsRIR_status == LS_RIR_STATUS_RENDEREDING_ONGOING)
+        return;
+    else
+        pData->lsRIR_status = LS_RIR_STATUS_RENDEREDING_ONGOING;
+    
+    strcpy(pData->progressText,"Processing");
+    
+    hosirrlib_processRIR(pData);
+    
+    /* indicate that rendering is complete */
+    pData->progress0_1 = 1.0f;
+    pData->lsRIR_status = LS_RIR_STATUS_RENDERED;
+}
+
 void hosirrlib_processRIR
     (void  *  const hHS)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("processRIR called.\n");
     
     /* Check previous stages are complete */
     if (pData->analysisStage < ANALYSIS_BUFS_LOADED-1) {
-        printf("allocprocessRIR called before previous stages were completed.");
+        printf("processRIR called before previous stages were completed: %d\n", pData->analysisStage);
         return; // TODO: handle fail case
     }
     
@@ -356,10 +383,11 @@ void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB)
    *            buffer, above which the onset is considered to have occured.
    */
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-        
+    printf("setDirectOnsetIndex called.\n");
+    
     /* Check previous stages are complete */
     if (pData->analysisStage < DIRECT_ONSET_FOUND-1) {
-        printf("setDirectOnsetIndes called before previous stages were completed.");
+        printf("setDirectOnsetIndes called before previous stages were completed: %d\n", pData->analysisStage);
         return; // TODO: handle fail case
     }
     
@@ -388,19 +416,23 @@ void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac)
    *            buffer, above which the onset is considered to have occured.
    */
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-        
+    printf("setDiffuseOnsetIndex called.\n");
+    
     /* Check previous stages are complete */
     if (pData->analysisStage < DIFFUSENESS_ONSET_FOUND-1) {
-        printf("setDiffuseOnsetIndes called before previous stages were completed.");
+        printf("setDiffuseOnsetIndex called before previous stages were completed: %d\n", pData->analysisStage);
         return; // TODO: handle fail case
     }
     /* Check if processing should actually go-ahead */
-    if(pData->ambiRIR_status != AMBI_RIR_STATUS_LOADED ||
-       pData->lsRIR_status == LS_RIR_STATUS_RENDERED ||
-       pData->lsRIR_status == LS_RIR_STATUS_RENDEREDING_ONGOING)
-        return;
-    else
-        pData->lsRIR_status = LS_RIR_STATUS_RENDEREDING_ONGOING;
+//    if(pData->ambiRIR_status != AMBI_RIR_STATUS_LOADED
+//     ||  pData->lsRIR_status == LS_RIR_STATUS_RENDERED ||
+//     ||  pData->lsRIR_status == LS_RIR_STATUS_RENDEREDING_ONGOING
+//       ) {
+//        printf("bailing in setDiffuseOnsetIndex bc of ambiRIR/lsRIR_status.\n");
+//        return;
+//    } else {
+//        pData->lsRIR_status = LS_RIR_STATUS_RENDEREDING_ONGOING;
+//    }
     
     /* take a local copy of current configuration to be thread safe */
     const int   nChan   = pData->nDir;
@@ -582,17 +614,18 @@ void hosirrlib_splitBands(
                           float** const inBuf,
                           float*** const bndBuf,
                           int removeFiltDelayFLAG,
-                          ANALYSIS_STAGE stage)
+                          ANALYSIS_STAGE thisStage)
 {
     /* removeFiltDelay = true will truncate the head and tail of the
      * filtered signal, instead of (only) the tail. So either way,
      * the written output will always be pData->nSamp for each channel. */
     
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("splitBands called.\n");
     
     /* Check previous stages are complete */
-    if (pData->analysisStage < stage-1) {
-        printf("splitBands called before previous stages were completed.");
+    if (pData->analysisStage < thisStage-1) {
+        printf("splitBands called before previous stages were completed: %d\n", pData->analysisStage);
         return; // TODO: handle fail case
     }
     
@@ -629,7 +662,7 @@ void hosirrlib_splitBands(
                    nInSamp * sizeof(float));
         }
     }
-    pData->analysisStage = stage;
+    pData->analysisStage = thisStage;
     free(temp);
 }
 
@@ -638,10 +671,11 @@ void hosirrlib_beamformRIR(
                            void* const hHS)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("beamformRIR called.\n");
     
     /* Check previous stages are complete */
     if (pData->analysisStage < BEAMFORMED-1){
-        printf("beamformRIR called before previous stages were completed.");
+        printf("beamformRIR called before previous stages were completed: %d\n", pData->analysisStage);
         return; // TODO: handle fail case
     }
     
@@ -704,13 +738,14 @@ void hosirrlib_calcEDC(
                        void* const hHS,
                        float*** const inBuf,
                        float*** const edcBuf,
-                       ANALYSIS_STAGE stage)
+                       ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("calcEDC called.\n");
     
     /* Check previous stages are complete */
-    if (pData->analysisStage < stage-1){
-        printf("calcEDC called before previous stages were completed.");
+    if (pData->analysisStage < thisStage-1){
+        printf("calcEDC called before previous stages were completed: %d\n", pData->analysisStage);
         return; // TODO: handle fail case
     }
     
@@ -740,7 +775,7 @@ void hosirrlib_calcEDC(
             }
         }
     }
-    pData->analysisStage = stage;
+    pData->analysisStage = thisStage;
 }
 
 
@@ -754,10 +789,11 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
               0 for the beginning of the EDC buffer
    */
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("calcT60 called.\n");
     
     /* Check previous stages are complete */
     if (pData->analysisStage < T60_DONE-1){
-        printf("calcT60 called before previous stages were completed.");
+        printf("calcT60 called before previous stages were completed: %d\n", pData->analysisStage);
         return; // TODO: handle fail case
     }
     
@@ -812,13 +848,13 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
      */
     
     /* Measure the t60 */
-    for (int bd = 0; bd < nBand; bd++) {
-        for (int ch = 0; ch < nChan; ch++) {
-            int st_meas    = st_end_meas[bd][ch][0];
-            int end_meas   = st_end_meas[bd][ch][1];
+    for (int ib = 0; ib < nBand; ib++) {
+        for (int ich = 0; ich < nChan; ich++) {
+            int st_meas    = st_end_meas[ib][ich][0];
+            int end_meas   = st_end_meas[ib][ich][1];
             int nSamp_meas = end_meas - st_meas + 1;
             
-            float y_mean = sumf(&edc[bd][ch][st_meas], nSamp_meas) / nSamp_meas;
+            float y_mean = sumf(&edc[ib][ich][st_meas], nSamp_meas) / nSamp_meas;
             
             /* Construct a vector with a slope of 1:samp with zero mean */
             float first_val = (nSamp_meas - 1) / 2.f; // first value
@@ -826,7 +862,7 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
                 x_slope1[i] = first_val + i;
             };
             // remove mean from EDC, in measured span
-            utility_svssub(&edc[bd][ch][st_meas], &y_mean, nSamp_meas, y_edc0m);
+            utility_svssub(&edc[ib][ich][st_meas], &y_mean, nSamp_meas, y_edc0m);
             // covariance x * y and x * x
             utility_svvmul(x_slope1, y_edc0m, nSamp_meas, stage);
             float c_xy = sumf(stage, nSamp_meas);
@@ -835,9 +871,9 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
             // slope dB/samp
             float dbPerSamp = c_xy / c_xx;
             // write out
-            pData->t60Buf[bd][ch] = -60.f / dbPerSamp / fs;
+            pData->t60Buf[ib][ich] = -60.f / dbPerSamp / fs;
             // debug
-            printf("t60: dir %d band %d  %.2f sec\n", bd, ch, pData->t60Buf[bd][ch]);
+            printf("t60: dir %d band %d  %.2f sec\n", ich, ib, pData->t60Buf[ib][ich]);
         }
     }
         
@@ -850,6 +886,8 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
 
 int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thresh)
 {
+//    printf("irstIndexLessThan called.\n");
+    
     for (int i = startIdx; i < endIdx+1; i++) {
         if (vec[i] < thresh)
             return i;
@@ -859,6 +897,8 @@ int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thr
 
 int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float thresh)
 {
+//    printf("firstIndexGreaterThan called.\n");
+    
     for (int i = startIdx; i < endIdx+1; i++) {
         if (vec[i] > thresh)
             return i;

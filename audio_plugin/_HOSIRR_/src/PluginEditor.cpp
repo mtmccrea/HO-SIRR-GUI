@@ -1207,6 +1207,35 @@ void PluginEditor::buttonClicked (juce::Button* buttonThatWasClicked)
     else if (buttonThatWasClicked == tb_saveEDC.get())
     {
         //[UserButtonCode_tb_saveEDC] -- add your button handler code here..
+        if(hosirrlib_getLsRIRstatus(hHS)==LS_RIR_STATUS_RENDERED){
+            File base = hVst->getSaveWavDirectory().exists() ? hVst->getSaveWavDirectory() : File::getSpecialLocation (File::userHomeDirectory);
+            String path = base.getFullPathName() + "/tmp_edc.wav";
+            auto file = File(path);
+            if (file != File{}) {
+                hVst->setSaveWavDirectory(file.getParentDirectory());
+                
+                /* fill audio buffer */
+                AudioBuffer<float> buffer;
+                buffer.setSize(hosirrlib_getNumDirections(hHS),
+                               hosirrlib_getAmbiRIRlength_samples(hHS));
+                buffer.clear();
+                float** edcCopy = buffer.getArrayOfWritePointers();
+                hosirrlib_getEDCBufs(hHS, edcCopy); // populates lsRIR var, mtm
+                
+                /* write audio buffer to disk */
+                WavAudioFormat wavFormat;
+                std::unique_ptr<AudioFormatWriter> writer;
+                file.deleteFile();
+                writer.reset (wavFormat.createWriterFor (new FileOutputStream (file),
+                                                         (double)hosirrlib_getAmbiRIRsampleRate(hHS),
+                                                         (unsigned int)hosirrlib_getNumDirections(hHS),
+                                                         32, {}, 0));
+                if (writer != nullptr){
+                    writer->writeFromAudioSampleBuffer(buffer, 0, buffer.getNumSamples());
+                }
+                writer = nullptr;
+            }
+        }
         //[/UserButtonCode_tb_saveEDC]
     }
 

@@ -252,6 +252,10 @@ int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float 
 void hosirrlib_renderTMP(void* const hHS);
 void hosirrlib_getEDCBufs(void* const hHS, float** edcCopy);
 
+/* Getters */
+int hosirrlib_getNumDirections(void* const hHS);
+
+
 /**
  * Sets a flag, as to whether the renderer should isolate the first peak in the
  * Ambisonic RIR and process it based on broad-band analysis (0:disabled,

@@ -919,8 +919,8 @@ void hosirrlib_getEDCBufs(void* const hHS, float** edcCopy)
     
     if(pData->analysisStage >= RIR_EDC_DONE)      // confirm EDCs are rendered
         for(int i = 0; i < pData->nDir; i++)
-            memcpy(edcCopy[i],                    // copy-to channel
-                   &(pData->edcBuf_rir[0][i][0]), // [bnd][ch][smp]
+            memcpy(&edcCopy[i][0],                    // copy-to channel
+                   &(pData->edcBuf_rir[i % pData->nBand][i][0]), // [bnd][ch][smp]
                    pData->nSamp * sizeof(float));
 }
 
@@ -1654,4 +1654,10 @@ int hosirrlib_getNormType(void* const hHS)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     return (int)pData->norm;
+}
+
+int hosirrlib_getNumDirections(void* const hHS)
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    return pData->nDir;
 }

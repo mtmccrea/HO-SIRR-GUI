@@ -215,11 +215,11 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
 
     tb_BroadBand1stPeak->setBounds (410, 174, 26, 24);
 
-    juce__textButton.reset (new juce::TextButton ("display"));
-    addAndMakeVisible (juce__textButton.get());
-    juce__textButton->addListener (this);
+    tb_displayEDC.reset (new juce::TextButton ("display"));
+    addAndMakeVisible (tb_displayEDC.get());
+    tb_displayEDC->addListener (this);
 
-    juce__textButton->setBounds (368, 64, 54, 16);
+    tb_displayEDC->setBounds (368, 64, 54, 16);
 
     SL_displayGain_edc.reset (new juce::Slider ("new slider"));
     addAndMakeVisible (SL_displayGain_edc.get());
@@ -458,7 +458,7 @@ PluginEditor::~PluginEditor()
     SL_displayGain = nullptr;
     SL_displayTimeTrim = nullptr;
     tb_BroadBand1stPeak = nullptr;
-    juce__textButton = nullptr;
+    tb_displayEDC = nullptr;
     SL_displayGain_edc = nullptr;
     SL_displayTimeTrim_edc = nullptr;
 
@@ -1203,10 +1203,10 @@ void PluginEditor::buttonClicked (juce::Button* buttonThatWasClicked)
         hosirrlib_setBroadBandFirstPeakFLAG(hHS, tb_BroadBand1stPeak->getToggleState());
         //[/UserButtonCode_tb_BroadBand1stPeak]
     }
-    else if (buttonThatWasClicked == juce__textButton.get())
+    else if (buttonThatWasClicked == tb_displayEDC.get())
     {
-        //[UserButtonCode_juce__textButton] -- add your button handler code here..
-        //[/UserButtonCode_juce__textButton]
+        //[UserButtonCode_tb_displayEDC] -- add your button handler code here..
+        //[/UserButtonCode_tb_displayEDC]
     }
 
     //[UserbuttonClicked_Post]
@@ -1473,7 +1473,7 @@ BEGIN_JUCER_METADATA
   <TOGGLEBUTTON name="new toggle button" id="b87fbd348008eaa8" memberName="tb_BroadBand1stPeak"
                 virtualName="" explicitFocusOrder="0" pos="410 174 26 24" buttonText=""
                 connectedEdges="0" needsCallback="1" radioGroupId="0" state="0"/>
-  <TEXTBUTTON name="display" id="bba72df0432bc636" memberName="juce__textButton"
+  <TEXTBUTTON name="display" id="bba72df0432bc636" memberName="tb_displayEDC"
               virtualName="" explicitFocusOrder="0" pos="368 64 54 16" buttonText="display"
               connectedEdges="0" needsCallback="1" radioGroupId="0"/>
   <SLIDER name="new slider" id="59e7bcc9f3b167d8" memberName="SL_displayGain_edc"

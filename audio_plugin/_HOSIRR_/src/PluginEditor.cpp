@@ -215,11 +215,12 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
 
     tb_BroadBand1stPeak->setBounds (410, 174, 26, 24);
 
-    tb_displayEDC.reset (new juce::TextButton ("display"));
-    addAndMakeVisible (tb_displayEDC.get());
-    tb_displayEDC->addListener (this);
+    tb_saveEDC.reset (new juce::TextButton ("display"));
+    addAndMakeVisible (tb_saveEDC.get());
+    tb_saveEDC->setButtonText (TRANS("saveEDC"));
+    tb_saveEDC->addListener (this);
 
-    tb_displayEDC->setBounds (368, 64, 54, 16);
+    tb_saveEDC->setBounds (368, 64, 54, 16);
 
     SL_displayGain_edc.reset (new juce::Slider ("new slider"));
     addAndMakeVisible (SL_displayGain_edc.get());
@@ -458,7 +459,7 @@ PluginEditor::~PluginEditor()
     SL_displayGain = nullptr;
     SL_displayTimeTrim = nullptr;
     tb_BroadBand1stPeak = nullptr;
-    tb_displayEDC = nullptr;
+    tb_saveEDC = nullptr;
     SL_displayGain_edc = nullptr;
     SL_displayTimeTrim_edc = nullptr;
 
@@ -1203,10 +1204,10 @@ void PluginEditor::buttonClicked (juce::Button* buttonThatWasClicked)
         hosirrlib_setBroadBandFirstPeakFLAG(hHS, tb_BroadBand1stPeak->getToggleState());
         //[/UserButtonCode_tb_BroadBand1stPeak]
     }
-    else if (buttonThatWasClicked == tb_displayEDC.get())
+    else if (buttonThatWasClicked == tb_saveEDC.get())
     {
-        //[UserButtonCode_tb_displayEDC] -- add your button handler code here..
-        //[/UserButtonCode_tb_displayEDC]
+        //[UserButtonCode_tb_saveEDC] -- add your button handler code here..
+        //[/UserButtonCode_tb_saveEDC]
     }
 
     //[UserbuttonClicked_Post]
@@ -1473,8 +1474,8 @@ BEGIN_JUCER_METADATA
   <TOGGLEBUTTON name="new toggle button" id="b87fbd348008eaa8" memberName="tb_BroadBand1stPeak"
                 virtualName="" explicitFocusOrder="0" pos="410 174 26 24" buttonText=""
                 connectedEdges="0" needsCallback="1" radioGroupId="0" state="0"/>
-  <TEXTBUTTON name="display" id="bba72df0432bc636" memberName="tb_displayEDC"
-              virtualName="" explicitFocusOrder="0" pos="368 64 54 16" buttonText="display"
+  <TEXTBUTTON name="display" id="bba72df0432bc636" memberName="tb_saveEDC"
+              virtualName="" explicitFocusOrder="0" pos="368 64 54 16" buttonText="saveEDC"
               connectedEdges="0" needsCallback="1" radioGroupId="0"/>
   <SLIDER name="new slider" id="59e7bcc9f3b167d8" memberName="SL_displayGain_edc"
           virtualName="" explicitFocusOrder="0" pos="280 400 152 20" bkgcol="ff5c5d5e"

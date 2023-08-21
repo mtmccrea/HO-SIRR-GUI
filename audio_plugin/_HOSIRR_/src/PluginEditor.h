@@ -169,7 +169,7 @@ private:
     std::unique_ptr<juce::Slider> SL_displayGain;
     std::unique_ptr<juce::Slider> SL_displayTimeTrim;
     std::unique_ptr<juce::ToggleButton> tb_BroadBand1stPeak;
-    std::unique_ptr<juce::TextButton> tb_displayEDC;
+    std::unique_ptr<juce::TextButton> tb_saveEDC;
     std::unique_ptr<juce::Slider> SL_displayGain_edc;
     std::unique_ptr<juce::Slider> SL_displayTimeTrim_edc;
 

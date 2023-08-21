@@ -7,12 +7,12 @@
   the "//[xyz]" and "//[/xyz]" sections will be retained when the file is loaded
   and re-saved.
 
-  Created with Projucer version: 5.4.4
+  Created with Projucer version: 7.0.6
 
   ------------------------------------------------------------------------------
 
   The Projucer is part of the JUCE library.
-  Copyright (c) 2017 - ROLI Ltd.
+  Copyright (c) 2020 - Raw Material Software Limited.
 
   ==============================================================================
 */
@@ -55,7 +55,7 @@ class RIRview  : public Component,
 public:
     //==============================================================================
     RIRview (int sourceSamplesPerThumbnailSample, AudioFormatManager& formatManager, AudioThumbnailCache& cache, int width, int height);
-    ~RIRview();
+    ~RIRview() override;
 
     //==============================================================================
     //[UserMethods]     -- You can add your own custom methods in this section.
@@ -103,13 +103,13 @@ public:
             }
         }
     }
-    
+
     void setLabelsView(RIR_VIEW_WAV_LABELS labelview)
     {
         labels = labelview;
         thumbnailChanged();
     }
-    
+
     RIR_VIEW_WAV_LABELS getLabelsView()
     {
         return labels;
@@ -134,7 +134,7 @@ public:
 
     //[/UserMethods]
 
-    void paint (Graphics& g) override;
+    void paint (juce::Graphics& g) override;
     void resized() override;
 
 

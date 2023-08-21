@@ -7,7 +7,7 @@
   the "//[xyz]" and "//[/xyz]" sections will be retained when the file is loaded
   and re-saved.
 
-  Created with Projucer version: 6.0.3
+  Created with Projucer version: 7.0.6
 
   ------------------------------------------------------------------------------
 
@@ -130,12 +130,14 @@ private:
     float dispTimeTrim;
     float dispGain_dB;
     RIR_VIEW_WAV_LABELS currentView;
-    
-    /* RIR display 2 mtm */
-    std::unique_ptr<Viewport> RIRviewVP2;
-    AudioThumbnailCache thumbnailCache2;
-    RIRview* thumbnailComp2;
-    RIR_VIEW_WAV_LABELS currentView2;
+
+    /* EDC display */
+    std::unique_ptr<Viewport> EDCviewVP;
+    AudioThumbnailCache thumbnailCache_edc;
+    RIRview* thumbnailComp_edc;
+    float dispTimeTrim_edc;
+    float dispGain_dB_edc;
+    RIR_VIEW_WAV_LABELS currentView_edc;
 
 
     /* warnings */
@@ -164,10 +166,12 @@ private:
     std::unique_ptr<juce::Slider> SL_wetDryBalance;
     std::unique_ptr<juce::Slider> SL_windowSize;
     std::unique_ptr<juce::ComboBox> CBdisplayRIR;
-    std::unique_ptr<juce::ComboBox> CBdisplayRIR2; // mtm
     std::unique_ptr<juce::Slider> SL_displayGain;
     std::unique_ptr<juce::Slider> SL_displayTimeTrim;
     std::unique_ptr<juce::ToggleButton> tb_BroadBand1stPeak;
+    std::unique_ptr<juce::TextButton> juce__textButton;
+    std::unique_ptr<juce::Slider> SL_displayGain_edc;
+    std::unique_ptr<juce::Slider> SL_displayTimeTrim_edc;
 
 
     //==============================================================================

@@ -7,7 +7,7 @@
   the "//[xyz]" and "//[/xyz]" sections will be retained when the file is loaded
   and re-saved.
 
-  Created with Projucer version: 6.0.3
+  Created with Projucer version: 7.0.6
 
   ------------------------------------------------------------------------------
 
@@ -30,7 +30,7 @@
 //==============================================================================
 PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     : AudioProcessorEditor(ownerFilter), progressbar(progress), fileChooser ("File", File(), true, false, false, "*.wav", String(),
-      "Load *.wav File"), thumbnailCache (5), thumbnailCache2 (5) // mtm
+      "Load *.wav File"), thumbnailCache (5), thumbnailCache_edc (5)
 {
     //[Constructor_pre] You can add your own custom stuff here..
     //[/Constructor_pre]
@@ -110,7 +110,7 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     tb_render->addListener (this);
     tb_render->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff9e8c14));
 
-    tb_render->setBounds (264, 65, 144, 18);
+    tb_render->setBounds (256, 64, 96, 18);
 
     tb_saveRIR.reset (new juce::TextButton ("new button"));
     addAndMakeVisible (tb_saveRIR.get());
@@ -185,19 +185,6 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     CBdisplayRIR->addListener (this);
 
     CBdisplayRIR->setBounds (21, 229, 99, 18);
-    
-    // mtm
-    CBdisplayRIR2.reset (new juce::ComboBox ("new combo box"));
-    addAndMakeVisible (CBdisplayRIR2.get());
-    CBdisplayRIR2->setEditableText (false);
-    CBdisplayRIR2->setJustificationType (juce::Justification::centredLeft);
-    CBdisplayRIR2->setTextWhenNothingSelected (TRANS("Ambi RIR"));
-    CBdisplayRIR2->setTextWhenNoChoicesAvailable (TRANS("(no choices)"));
-    CBdisplayRIR2->addListener (this);
-
-    CBdisplayRIR2->setBounds (21, 229+150, 99, 18);
-    
-    
 
     SL_displayGain.reset (new juce::Slider ("new slider"));
     addAndMakeVisible (SL_displayGain.get());
@@ -228,11 +215,39 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
 
     tb_BroadBand1stPeak->setBounds (410, 174, 26, 24);
 
+    juce__textButton.reset (new juce::TextButton ("display"));
+    addAndMakeVisible (juce__textButton.get());
+    juce__textButton->addListener (this);
+
+    juce__textButton->setBounds (368, 64, 54, 16);
+
+    SL_displayGain_edc.reset (new juce::Slider ("new slider"));
+    addAndMakeVisible (SL_displayGain_edc.get());
+    SL_displayGain_edc->setRange (-24, 24, 0.01);
+    SL_displayGain_edc->setSliderStyle (juce::Slider::LinearHorizontal);
+    SL_displayGain_edc->setTextBoxStyle (juce::Slider::NoTextBox, false, 50, 20);
+    SL_displayGain_edc->setColour (juce::Slider::backgroundColourId, juce::Colour (0xff5c5d5e));
+    SL_displayGain_edc->setColour (juce::Slider::trackColourId, juce::Colour (0xff315b6d));
+    SL_displayGain_edc->addListener (this);
+
+    SL_displayGain_edc->setBounds (280, 400, 152, 20);
+
+    SL_displayTimeTrim_edc.reset (new juce::Slider ("new slider"));
+    addAndMakeVisible (SL_displayTimeTrim_edc.get());
+    SL_displayTimeTrim_edc->setRange (0.01, 1, 0.01);
+    SL_displayTimeTrim_edc->setSliderStyle (juce::Slider::LinearHorizontal);
+    SL_displayTimeTrim_edc->setTextBoxStyle (juce::Slider::NoTextBox, false, 50, 20);
+    SL_displayTimeTrim_edc->setColour (juce::Slider::backgroundColourId, juce::Colour (0xff5c5d5e));
+    SL_displayTimeTrim_edc->setColour (juce::Slider::trackColourId, juce::Colour (0xff315b6d));
+    SL_displayTimeTrim_edc->addListener (this);
+
+    SL_displayTimeTrim_edc->setBounds (88, 400, 152, 20);
+
 
     //[UserPreSize]
     //[/UserPreSize]
 
-    setSize (656, 680);
+    setSize (656, 550);
 
 
     //[Constructor] You can add your own custom stuff here..
@@ -345,21 +360,20 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     currentView = RIR_VIEW_SH_LABELS;
     thumbnailComp->setLabelsView(currentView);
     CBdisplayRIR->addItem (TRANS("Ambi RIR"), RIR_VIEW_SH_LABELS);
-    
+
     /* RIR display 2 mtm */
-    RIRviewVP2.reset (new Viewport ("new viewport"));
-    addAndMakeVisible (RIRviewVP2.get());
-    thumbnailComp2 = new RIRview(2048, formatManager, thumbnailCache, RIRview_width, RIRview_height);
-    RIRviewVP2->setViewedComponent(thumbnailComp2);
-    RIRviewVP2->setBounds(22, 254+RIRview_height+50, RIRview_width+8, RIRview_height);
+    EDCviewVP.reset (new Viewport ("new viewport"));
+    addAndMakeVisible (EDCviewVP.get());
+    thumbnailComp_edc = new RIRview(2048, formatManager, thumbnailCache_edc, RIRview_width, RIRview_height);
+    EDCviewVP->setViewedComponent(thumbnailComp_edc);
+    EDCviewVP->setBounds(22, 254+RIRview_height+50, RIRview_width+8, RIRview_height);
     dispTimeTrim = 1.0f;
     dispGain_dB = 0.0f;
-    thumbnailComp2->setTimeTrim(dispTimeTrim);
-    thumbnailComp2->setGain_dB(dispGain_dB);
-    currentView2 = RIR_VIEW_SH_LABELS;
-    thumbnailComp2->setLabelsView(currentView2);
-    CBdisplayRIR2->addItem (TRANS("EDC"), RIR_VIEW_SH_LABELS);
-    ///CBdisplayRIR->addItem (TRANS("LS RIR"), RIR_VIEW_LS_LABELS);
+    thumbnailComp_edc->setTimeTrim(dispTimeTrim);
+    thumbnailComp_edc->setGain_dB(dispGain_dB);
+    currentView_edc = RIR_VIEW_SH_LABELS;
+    thumbnailComp_edc->setLabelsView(currentView_edc);
+//    CBdisplayRIR2->addItem (TRANS("EDC"), RIR_VIEW_SH_LABELS);
 
     /* grab current parameter settings */
     CBanaOrder->setSelectedId(hosirrlib_getAnalysisOrder(hHS), dontSendNotification);
@@ -371,7 +385,7 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     SL_displayGain->setValue(dispGain_dB, dontSendNotification);
     SL_displayTimeTrim->setValue(dispTimeTrim, dontSendNotification);
     CBdisplayRIR->setSelectedId(currentView, dontSendNotification);
-    CBdisplayRIR2->setSelectedId(currentView2, dontSendNotification); // mtm
+//    CBdisplayRIR2->setSelectedId(currentView2, dontSendNotification); // mtm
     SL_windowSize->setValue(hosirrlib_getWindowLength(hHS), dontSendNotification);
     SL_wetDryBalance->setValue(hosirrlib_getWetDryBalance(hHS), dontSendNotification);
     tb_BroadBand1stPeak->setToggleState((bool)hosirrlib_getBroadBandFirstPeakFLAG(hHS), dontSendNotification);
@@ -444,6 +458,9 @@ PluginEditor::~PluginEditor()
     SL_displayGain = nullptr;
     SL_displayTimeTrim = nullptr;
     tb_BroadBand1stPeak = nullptr;
+    juce__textButton = nullptr;
+    SL_displayGain_edc = nullptr;
+    SL_displayTimeTrim_edc = nullptr;
 
 
     //[Destructor]. You can add your own custom destruction code here..
@@ -462,16 +479,16 @@ void PluginEditor::paint (juce::Graphics& g)
     g.fillAll (juce::Colours::white);
 
     {
-        int x = 0, y = 192, width = 656, height = 188;
+        int x = 0, y = 175, width = 656, height = 379;
         juce::Colour fillColour1 = juce::Colour (0xff19313f), fillColour2 = juce::Colour (0xff041518);
         //[UserPaintCustomArguments] Customize the painting arguments here..
         //[/UserPaintCustomArguments]
         g.setGradientFill (juce::ColourGradient (fillColour1,
                                              8.0f - 0.0f + x,
-                                             384.0f - 192.0f + y,
+                                             384.0f - 175.0f + y,
                                              fillColour2,
                                              8.0f - 0.0f + x,
-                                             312.0f - 192.0f + y,
+                                             312.0f - 175.0f + y,
                                              false));
         g.fillRect (x, y, width, height);
     }
@@ -921,6 +938,43 @@ void PluginEditor::paint (juce::Graphics& g)
 
     }
 
+    {
+        int x = 8, y = 391, width = 428, height = 153;
+        juce::Colour fillColour = juce::Colour (0x10f5f5f5);
+        juce::Colour strokeColour = juce::Colour (0xff2aa57c);
+        //[UserPaintCustomArguments] Customize the painting arguments here..
+        //[/UserPaintCustomArguments]
+        g.setColour (fillColour);
+        g.fillRect (x, y, width, height);
+        g.setColour (strokeColour);
+        g.drawRect (x, y, width, height, 1);
+
+    }
+
+    {
+        int x = 16, y = 392, width = 132, height = 30;
+        juce::String text (TRANS("Time Trim:"));
+        juce::Colour fillColour = juce::Colours::white;
+        //[UserPaintCustomArguments] Customize the painting arguments here..
+        //[/UserPaintCustomArguments]
+        g.setColour (fillColour);
+        g.setFont (juce::Font (14.50f, juce::Font::plain).withTypefaceStyle ("Bold"));
+        g.drawText (text, x, y, width, height,
+                    juce::Justification::centredLeft, true);
+    }
+
+    {
+        int x = 248, y = 392, width = 132, height = 30;
+        juce::String text (TRANS("Scale:"));
+        juce::Colour fillColour = juce::Colours::white;
+        //[UserPaintCustomArguments] Customize the painting arguments here..
+        //[/UserPaintCustomArguments]
+        g.setColour (fillColour);
+        g.setFont (juce::Font (14.50f, juce::Font::plain).withTypefaceStyle ("Bold"));
+        g.drawText (text, x, y, width, height,
+                    juce::Justification::centredLeft, true);
+    }
+
     //[UserPaint] Add your own custom painting code here..
 
     /* disp version number */
@@ -1040,6 +1094,16 @@ void PluginEditor::sliderValueChanged (juce::Slider* sliderThatWasMoved)
         thumbnailComp->setTimeTrim(dispTimeTrim);
         //[/UserSliderCode_SL_displayTimeTrim]
     }
+    else if (sliderThatWasMoved == SL_displayGain_edc.get())
+    {
+        //[UserSliderCode_SL_displayGain_edc] -- add your slider handling code here..
+        //[/UserSliderCode_SL_displayGain_edc]
+    }
+    else if (sliderThatWasMoved == SL_displayTimeTrim_edc.get())
+    {
+        //[UserSliderCode_SL_displayTimeTrim_edc] -- add your slider handling code here..
+        //[/UserSliderCode_SL_displayTimeTrim_edc]
+    }
 
     //[UsersliderValueChanged_Post]
     //[/UsersliderValueChanged_Post]
@@ -1139,6 +1203,11 @@ void PluginEditor::buttonClicked (juce::Button* buttonThatWasClicked)
         hosirrlib_setBroadBandFirstPeakFLAG(hHS, tb_BroadBand1stPeak->getToggleState());
         //[/UserButtonCode_tb_BroadBand1stPeak]
     }
+    else if (buttonThatWasClicked == juce__textButton.get())
+    {
+        //[UserButtonCode_juce__textButton] -- add your button handler code here..
+        //[/UserButtonCode_juce__textButton]
+    }
 
     //[UserbuttonClicked_Post]
     //[/UserbuttonClicked_Post]
@@ -1230,9 +1299,9 @@ BEGIN_JUCER_METADATA
                  parentClasses="public AudioProcessorEditor, public Timer, private FilenameComponentListener"
                  constructorParams="PluginProcessor* ownerFilter" variableInitialisers="AudioProcessorEditor(ownerFilter), progressbar(progress), fileChooser (&quot;File&quot;, File(), true, false, false, &quot;*.wav&quot;, String(),&#10; &quot;Load *.wav File&quot;), thumbnailCache (5)"
                  snapPixels="8" snapActive="1" snapShown="1" overlayOpacity="0.330"
-                 fixedSize="1" initialWidth="656" initialHeight="380">
+                 fixedSize="1" initialWidth="656" initialHeight="550">
   <BACKGROUND backgroundColour="ffffffff">
-    <RECT pos="0 192 656 188" fill="linear: 8 384, 8 312, 0=ff19313f, 1=ff041518"
+    <RECT pos="0 175 656 379" fill="linear: 8 384, 8 312, 0=ff19313f, 1=ff041518"
           hasStroke="0"/>
     <RECT pos="0 30 656 163" fill="linear: 8 32, 8 88, 0=ff19313f, 1=ff041518"
           hasStroke="0"/>
@@ -1324,6 +1393,14 @@ BEGIN_JUCER_METADATA
           strokeColour="solid: 67a0a0a0"/>
     <RECT pos="446 58 196 32" fill="solid: 8f4f4f4" hasStroke="1" stroke="0.8, mitered, butt"
           strokeColour="solid: 67a0a0a0"/>
+    <RECT pos="8 391 428 153" fill="solid: 10f5f5f5" hasStroke="1" stroke="0.8, mitered, butt"
+          strokeColour="solid: ff2aa57c"/>
+    <TEXT pos="16 392 132 30" fill="solid: ffffffff" hasStroke="0" text="Time Trim:"
+          fontname="Default font" fontsize="14.5" kerning="0.0" bold="1"
+          italic="0" justification="33" typefaceStyle="Bold"/>
+    <TEXT pos="248 392 132 30" fill="solid: ffffffff" hasStroke="0" text="Scale:"
+          fontname="Default font" fontsize="14.5" kerning="0.0" bold="1"
+          italic="0" justification="33" typefaceStyle="Bold"/>
   </BACKGROUND>
   <COMBOBOX name="new combo box" id="5a2f99f88aa51390" memberName="CBoutputDirsPreset"
             virtualName="" explicitFocusOrder="0" pos="520 96 112 20" editable="0"
@@ -1350,7 +1427,7 @@ BEGIN_JUCER_METADATA
             virtualName="" explicitFocusOrder="0" pos="344 95 88 20" editable="0"
             layout="33" items="" textWhenNonSelected="Default" textWhenNoItems="(no choices)"/>
   <TEXTBUTTON name="new button" id="b7db7350ba7d784f" memberName="tb_render"
-              virtualName="" explicitFocusOrder="0" pos="264 65 144 18" bgColOff="ff9e8c14"
+              virtualName="" explicitFocusOrder="0" pos="256 64 96 18" bgColOff="ff9e8c14"
               buttonText="Render" connectedEdges="0" needsCallback="1" radioGroupId="0"/>
   <TEXTBUTTON name="new button" id="dcf176a177d0d3a1" memberName="tb_saveRIR"
               virtualName="" explicitFocusOrder="0" pos="480 65 136 18" bgColOff="ff9e2f14"
@@ -1396,6 +1473,19 @@ BEGIN_JUCER_METADATA
   <TOGGLEBUTTON name="new toggle button" id="b87fbd348008eaa8" memberName="tb_BroadBand1stPeak"
                 virtualName="" explicitFocusOrder="0" pos="410 174 26 24" buttonText=""
                 connectedEdges="0" needsCallback="1" radioGroupId="0" state="0"/>
+  <TEXTBUTTON name="display" id="bba72df0432bc636" memberName="juce__textButton"
+              virtualName="" explicitFocusOrder="0" pos="368 64 54 16" buttonText="display"
+              connectedEdges="0" needsCallback="1" radioGroupId="0"/>
+  <SLIDER name="new slider" id="59e7bcc9f3b167d8" memberName="SL_displayGain_edc"
+          virtualName="" explicitFocusOrder="0" pos="280 400 152 20" bkgcol="ff5c5d5e"
+          trackcol="ff315b6d" min="-24.0" max="24.0" int="0.01" style="LinearHorizontal"
+          textBoxPos="NoTextBox" textBoxEditable="1" textBoxWidth="50"
+          textBoxHeight="20" skewFactor="1.0" needsCallback="1"/>
+  <SLIDER name="new slider" id="91864a59fa6f0328" memberName="SL_displayTimeTrim_edc"
+          virtualName="" explicitFocusOrder="0" pos="88 400 152 20" bkgcol="ff5c5d5e"
+          trackcol="ff315b6d" min="0.01" max="1.0" int="0.01" style="LinearHorizontal"
+          textBoxPos="NoTextBox" textBoxEditable="1" textBoxWidth="50"
+          textBoxHeight="20" skewFactor="1.0" needsCallback="1"/>
 </JUCER_COMPONENT>
 
 END_JUCER_METADATA

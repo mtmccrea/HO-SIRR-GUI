@@ -862,7 +862,7 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
             for (int i = 0; i < nSamp_meas; i++) {
                 x_slope1[i] = first_val + i;
             };
-            // remove mean from EDC, in measured span
+            // remove mean from EDC, within the measurement span
             utility_svssub(&edc[ib][ich][st_meas], &y_mean, nSamp_meas, y_edc0m);
             // covariance x * y and x * x
             utility_svvmul(x_slope1, y_edc0m, nSamp_meas, stage);
@@ -908,7 +908,7 @@ int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float 
 }
 
 // for the GUI to display the EDCs
-void hosirrlib_getEDCBufs(void* const hHS, float** edcCopy)
+void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcCopy, float displayRange)
 {
     /*
      Note edcBuf_rir are foat*** nband x ndir x nsamp, but dirEDC pointer
@@ -917,11 +917,54 @@ void hosirrlib_getEDCBufs(void* const hHS, float** edcCopy)
      */
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     
-    if(pData->analysisStage >= RIR_EDC_DONE)      // confirm EDCs are rendered
-        for(int i = 0; i < pData->nDir; i++)
-            memcpy(&edcCopy[i][0],                    // copy-to channel
-                   &(pData->edcBuf_rir[i % pData->nBand][i][0]), // [bnd][ch][smp]
-                   pData->nSamp * sizeof(float));
+    const int nBand = pData->nBand;
+    const int nSamp = pData->nSamp;
+    const int nDir = pData->nDir;
+    float*** const edc = pData->edcBuf_rir;
+    float* const edc_flat = (float*)FLATTEN3D(pData->edcBuf_rir);
+    const int flatLen = nBand * nDir * nSamp;
+    
+    if(pData->analysisStage >= RIR_EDC_DONE) {    // confirm EDCs are rendered
+        
+        /* normalise to range [-1 1] for plotting */
+        float maxVal, minVal, range, add, scale, sub;
+        // intializse to first/last value of first channel
+        maxVal = edc[0][0][0];
+        minVal = maxVal - displayRange; // just display the top displayRange in dB
+        // minVal = edc[0][0][nSamp-1];
+        // check the first and last values of every channel
+        for (int ib = 1; ib < nBand; ib++)
+            for (int ich = 0; ich < nDir; ich++) {
+                if (edc[ib][ich][0] > maxVal)
+                    maxVal = edc[ib][ich][0];
+                // if (edc[ib][ich][nSamp-1] < minVal)
+                //     minVal = edc[ib][ich][nSamp-1];
+            }
+        
+        range = maxVal - minVal;
+        add = minVal * -1.f;
+        scale = 2.0f/fabsf(range);
+        sub = 1.f;
+        printf("max %.1f, min %.1f, rng %.1f, add %.1f, scl %.1f, sub %.1f, ",
+               maxVal, minVal, range, add, scale, sub);
+        
+        for(int i = 0; i < pData->nDir; i++) {
+            utility_svsadd(&(pData->edcBuf_rir[0][i][0]), // [bnd][ch][smp]
+                           &add, nSamp,
+                           &edcCopy[i][0]); // [ch][smp]
+            utility_svsmul(&edcCopy[i][0],  // [ch][smp]
+                           &scale, nSamp,
+                           &edcCopy[i][0]); // [ch][smp]
+            utility_svssub(&edcCopy[i][0],  // [ch][smp]
+                           &sub, nSamp,
+                           &edcCopy[i][0]); // [ch][smp]
+        }
+        // simple copy
+        //        for(int i = 0; i < pData->nDir; i++)
+        //            memcpy(&edcCopy[i][0],                    // copy-to channel
+        //                   &(pData->edcBuf_rir[0][i][0]), // [bnd][ch][smp]
+        //                   nSamp * sizeof(float));
+    }
 }
 
 /* Render */

@@ -90,7 +90,8 @@ private:
     std::unique_ptr<Viewport> outputCoordsVP;
     outputCoordsView* outputCoordsView_handle;
     FilenameComponent fileChooser;
-
+    File edcFile;
+    
     /* json file loading/saving */
     std::unique_ptr<juce::FileChooser> chooser;
 
@@ -172,6 +173,7 @@ private:
     std::unique_ptr<juce::TextButton> tb_saveEDC;
     std::unique_ptr<juce::Slider> SL_displayGain_edc;
     std::unique_ptr<juce::Slider> SL_displayTimeTrim_edc;
+    std::unique_ptr<juce::TextButton> tb_displayEDC;
 
 
     //==============================================================================

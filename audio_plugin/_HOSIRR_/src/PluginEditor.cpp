@@ -244,6 +244,15 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
 
     SL_displayTimeTrim_edc->setBounds (88, 400, 152, 20);
 
+    tb_displayEDC.reset (new juce::TextButton ("display"));
+    addAndMakeVisible (tb_displayEDC.get());
+    tb_displayEDC->setButtonText (TRANS("displayEDC"));
+    tb_displayEDC->addListener (this);
+    tb_displayEDC->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff74ffd3));
+    tb_displayEDC->setColour (juce::TextButton::textColourOffId, juce::Colour (0xff5c2dff));
+
+    tb_displayEDC->setBounds (448, 400, 54, 16);
+
 
     //[UserPreSize]
     //[/UserPreSize]
@@ -362,19 +371,18 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     thumbnailComp->setLabelsView(currentView);
     CBdisplayRIR->addItem (TRANS("Ambi RIR"), RIR_VIEW_SH_LABELS);
 
-    /* RIR display 2 mtm */
+    /* EDC display */
     EDCviewVP.reset (new Viewport ("new viewport"));
     addAndMakeVisible (EDCviewVP.get());
     thumbnailComp_edc = new RIRview(2048, formatManager, thumbnailCache_edc, RIRview_width, RIRview_height);
     EDCviewVP->setViewedComponent(thumbnailComp_edc);
-    EDCviewVP->setBounds(22, 254+RIRview_height+50, RIRview_width+8, RIRview_height);
+    EDCviewVP->setBounds(22, 254+RIRview_height+70, RIRview_width+8, RIRview_height);
     dispTimeTrim = 1.0f;
     dispGain_dB = 0.0f;
     thumbnailComp_edc->setTimeTrim(dispTimeTrim);
     thumbnailComp_edc->setGain_dB(dispGain_dB);
     currentView_edc = RIR_VIEW_SH_LABELS;
     thumbnailComp_edc->setLabelsView(currentView_edc);
-//    CBdisplayRIR2->addItem (TRANS("EDC"), RIR_VIEW_SH_LABELS);
 
     /* grab current parameter settings */
     CBanaOrder->setSelectedId(hosirrlib_getAnalysisOrder(hHS), dontSendNotification);
@@ -462,6 +470,7 @@ PluginEditor::~PluginEditor()
     tb_saveEDC = nullptr;
     SL_displayGain_edc = nullptr;
     SL_displayTimeTrim_edc = nullptr;
+    tb_displayEDC = nullptr;
 
 
     //[Destructor]. You can add your own custom destruction code here..
@@ -1209,24 +1218,25 @@ void PluginEditor::buttonClicked (juce::Button* buttonThatWasClicked)
         //[UserButtonCode_tb_saveEDC] -- add your button handler code here..
         if(hosirrlib_getLsRIRstatus(hHS)==LS_RIR_STATUS_RENDERED){
             File base = hVst->getSaveWavDirectory().exists() ? hVst->getSaveWavDirectory() : File::getSpecialLocation (File::userHomeDirectory);
-            String path = base.getFullPathName() + "/tmp_edc.wav";
-            auto file = File(path);
-            if (file != File{}) {
-                hVst->setSaveWavDirectory(file.getParentDirectory());
-                
+            String edc_path = base.getFullPathName() + "/tmp_edc.wav";
+            DBG(edc_path);
+            edcFile = File(edc_path);
+            if (edcFile != File{}) {
+                hVst->setSaveWavDirectory(edcFile.getParentDirectory());
+
                 /* fill audio buffer */
                 AudioBuffer<float> buffer;
                 buffer.setSize(hosirrlib_getNumDirections(hHS),
                                hosirrlib_getAmbiRIRlength_samples(hHS));
                 buffer.clear();
                 float** edcCopy = buffer.getArrayOfWritePointers();
-                hosirrlib_getEDCBufs(hHS, edcCopy); // populates lsRIR var, mtm
-                
+                hosirrlib_copyNormalizedEDCBufs(hHS, edcCopy, 60.f); // populates lsRIR var, mtm
+
                 /* write audio buffer to disk */
                 WavAudioFormat wavFormat;
                 std::unique_ptr<AudioFormatWriter> writer;
-                file.deleteFile();
-                writer.reset (wavFormat.createWriterFor (new FileOutputStream (file),
+                edcFile.deleteFile();
+                writer.reset (wavFormat.createWriterFor (new FileOutputStream (edcFile),
                                                          (double)hosirrlib_getAmbiRIRsampleRate(hHS),
                                                          (unsigned int)hosirrlib_getNumDirections(hHS),
                                                          32, {}, 0));
@@ -1237,6 +1247,18 @@ void PluginEditor::buttonClicked (juce::Button* buttonThatWasClicked)
             }
         }
         //[/UserButtonCode_tb_saveEDC]
+    }
+    else if (buttonThatWasClicked == tb_displayEDC.get())
+    {
+        //[UserButtonCode_tb_displayEDC] -- add your button handler code here..
+        DBG("displayEDC clicked");
+        thumbnailComp_edc->setLabelsView((RIR_VIEW_WAV_LABELS)CBdisplayRIR->getSelectedId());
+        if (edcFile.exists()) {
+            thumbnailComp_edc->setFile(edcFile);
+        } else {
+            DBG("edcFile didn't exist :(");
+        }
+        //[/UserButtonCode_tb_displayEDC]
     }
 
     //[UserbuttonClicked_Post]
@@ -1516,6 +1538,10 @@ BEGIN_JUCER_METADATA
           trackcol="ff315b6d" min="0.01" max="1.0" int="0.01" style="LinearHorizontal"
           textBoxPos="NoTextBox" textBoxEditable="1" textBoxWidth="50"
           textBoxHeight="20" skewFactor="1.0" needsCallback="1"/>
+  <TEXTBUTTON name="display" id="8f74ad44a3615f13" memberName="tb_displayEDC"
+              virtualName="" explicitFocusOrder="0" pos="448 400 54 16" bgColOff="ff74ffd3"
+              textCol="ff5c2dff" buttonText="displayEDC" connectedEdges="0"
+              needsCallback="1" radioGroupId="0"/>
 </JUCER_COMPONENT>
 
 END_JUCER_METADATA

@@ -250,7 +250,7 @@ int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thr
 int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float thresh);
 
 void hosirrlib_renderTMP(void* const hHS);
-void hosirrlib_getEDCBufs(void* const hHS, float** edcCopy);
+void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcCopy, float displayRange);
 
 /* Getters */
 int hosirrlib_getNumDirections(void* const hHS);

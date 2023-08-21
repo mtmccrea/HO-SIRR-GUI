@@ -249,7 +249,8 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
 int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thresh);
 int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float thresh);
 
-void hosirrlib_renderTMP(void  *  const hHS);
+void hosirrlib_renderTMP(void* const hHS);
+void hosirrlib_getEDCBufs(void* const hHS, float** edcCopy);
 
 /**
  * Sets a flag, as to whether the renderer should isolate the first peak in the

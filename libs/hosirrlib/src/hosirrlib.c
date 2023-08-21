@@ -334,6 +334,7 @@ void hosirrlib_renderTMP
     /* indicate that rendering is complete */
     pData->progress0_1 = 1.0f;
     pData->lsRIR_status = LS_RIR_STATUS_RENDERED;
+    
 }
 
 void hosirrlib_processRIR
@@ -904,6 +905,23 @@ int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float 
             return i;
     }
     return -1;
+}
+
+// for the GUI to display the EDCs
+void hosirrlib_getEDCBufs(void* const hHS, float** edcCopy)
+{
+    /*
+     Note edcBuf_rir are foat*** nband x ndir x nsamp, but dirEDC pointer
+     in the UI is float** ndir x nsamp,
+     so for now, just return the first band of each direction
+     */
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    
+    if(pData->analysisStage >= RIR_EDC_DONE)      // confirm EDCs are rendered
+        for(int i = 0; i < pData->nDir; i++)
+            memcpy(edcCopy[i],                    // copy-to channel
+                   &(pData->edcBuf_rir[0][i][0]), // [bnd][ch][smp]
+                   pData->nSamp * sizeof(float));
 }
 
 /* Render */

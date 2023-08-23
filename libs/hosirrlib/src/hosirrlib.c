@@ -264,6 +264,10 @@ void hosirrlib_setUninitialized(void* const hHS)
     pData->fs = -1;
     pData->directOnsetIdx = -1;
     pData->diffuseOnsetIdx = -1;
+    pData->diffuseOnsetSec = 0;
+    pData->sourceDistance = 3.f; // default
+    pData->t0 = -1;
+    pData->t0Idx = 0;
     pData->duration = 0.0f;
     pData->analysisStage = RIR_NOT_LOADED;
 }
@@ -362,8 +366,9 @@ void hosirrlib_processRIR
     hosirrlib_beamformRIR(pData);
     hosirrlib_calcEDC(pData, pData->rirBuf_beams, pData->edcBuf_rir, RIR_EDC_DONE);
     hosirrlib_calcT60(pData,
-                      -3.f, 18.f, // startDb <=0, spanDb > 0
-                      pData->directOnsetIdx + (int)(pData->fs * directLagSec) // measure after this index
+                      -2.f, 15.f, // startDb (<= 0), spanDb (> 0)
+                      //pData->directOnsetIdx + (int)(pData->fs * directLagSec) // measure after this index
+                      pData->diffuseOnsetIdx // measure from diffuseOnset
                       );
 
 }
@@ -393,6 +398,7 @@ void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB)
     }
     
     const int nSamp = pData->nSamp;
+    const float fs = pData->fs;
     
     float* vabs_tmp = malloc1d(nSamp * sizeof(float));
     
@@ -404,8 +410,15 @@ void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB)
     /* index of first index above threshold */
     float maxVal        = vabs_tmp[maxIdx];
     float onsetThresh   = maxVal * powf(10.f, thresh_dB / 20.f);
-    pData->directOnsetIdx = hosirrlib_firstIndexGreaterThan(vabs_tmp, 0, nSamp-1,
-                                                          onsetThresh);
+    const int directOnsetIdx = hosirrlib_firstIndexGreaterThan(vabs_tmp, 0, nSamp-1, onsetThresh);
+    const float t0 = ((float)directOnsetIdx / fs) - (pData->sourceDistance / 343.f);
+    
+    pData->directOnsetIdx = directOnsetIdx;
+    pData->t0 = t0;
+    pData->t0Idx = (int)(t0 * fs); // negative value means t0 is before RIR start time
+    
+    printf("          t0 index: %d (%.3f sec)\n", pData->t0Idx, t0);
+    printf("direct onset index: %d (%.3f sec)\n", pData->directOnsetIdx, (float)pData->directOnsetIdx / pData->fs);
     
     pData->analysisStage = DIRECT_ONSET_FOUND;
     free(vabs_tmp);
@@ -450,7 +463,7 @@ void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac)
     const int hopsize   = winsize/2;     /* half the window size time-resolution */
     const int nBins_anl = winsize/2 + 1; /* nBins used for analysis */
     const int nBins_syn = fftsize/2 + 1; /* nBins used for synthesis */
-    const int lSig_pad  = winsize/2 + winsize*2 + lSig; // winsize/2 at head, sinsize*2 at tail
+    const int lSig_pad  = winsize/2 + lSig + winsize*2; // winsize/2 at head, sinsize*2 at tail
     float_complex pvCOV[4][4];
     
     /* Max freq bin to calculate diffuseness */
@@ -464,6 +477,8 @@ void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac)
             maxDiffFreq_idx = i;
         }
     }
+    printf("num diffuseness bins: %d\n", maxDiffFreq_idx+1);
+    printf("num    analysis bins: %d\n", nBins_anl);
     
     float* pvir, * pvir_pad, * win, * insig_win, * diff_win;
     float_complex* inspec_anl, * inspec_syn, * wxyzspec_win;
@@ -478,11 +493,10 @@ void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac)
         int inChan = xyzOrder[i];
         memcpy(&pvir[i * lSig], &pData->rirBuf[inChan][0], lSig * sizeof(float));
     };
-    float velScale = 1.f / sqrtf(3.f);
-    /* scale XYZ to normalized velocity */
-    utility_svsmul(&pvir[1 * lSig], &velScale, 3 * lSig, &pvir[1 * lSig]);
     
-    /* freq domain diffuseness */
+    /* scale XYZ to normalized velocity */
+    float velScale = 1.f / sqrtf(3.f);
+    utility_svsmul(&pvir[1 * lSig], &velScale, (nPV-1) * lSig, &pvir[1 * lSig]);
     
     /* normalise such that peak of the omni is 1 */
     int peakIdx;
@@ -491,12 +505,11 @@ void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac)
     peakNorm = 1.0f / fabsf(pvir[peakIdx]);
     utility_svsmul(pvir, &peakNorm, nPV * lSig, pvir);
     
-    
     /* zero pad the signal's start and end for STFT */
     // winsize/2 at head, winsize*2 at tail
     pvir_pad = calloc1d(nPV * lSig_pad, sizeof(float));
     for(int i = 0; i < nPV; i++) {
-        memcpy(&pvir_pad[i * lSig_pad + winsize/2],
+        memcpy(&pvir_pad[i * lSig_pad + (winsize/2)],
                &(pvir[i * lSig]),
                lSig * sizeof(float));
     }
@@ -507,92 +520,140 @@ void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac)
         win[i] = powf( sinf((float)i * (M_PI / (float)winsize)), 2.0f );
     
     /* mem alloc for diffuseness of each window */
-    int nDiffFrames = (int)((lSig + 2 * winsize) / hopsize + 0.5f);
+    int nDiffFrames = (int)((lSig + (2 * winsize)) / hopsize + 0.5f);
     diff_win = calloc1d(nDiffFrames, sizeof(float));
+    
+    // mem alloc for a single window of processing
+    insig_win    = calloc1d(fftsize, sizeof(float));
+    inspec_syn   = calloc1d(nPV * nBins_syn, sizeof(float_complex)); // ma->ca
+    inspec_anl   = calloc1d(nPV * nBins_anl, sizeof(float_complex)); // ma->ca
+    wxyzspec_win = malloc1d(nPV * nBins_anl * sizeof(float_complex));
+    saf_rfft_create(&hFFT_syn, fftsize);
+    saf_rfft_create(&hFFT_anl, fftsize/2);
+    
+    // initialize such that intensity and energy lead to an inititall
+    // diffuseness of 0
+    float prev_ixyz_smooth[3] = {1.f, 0.f, 0.f};
+    float prev_energy_smooth = 1.f;
     
     /* Main processing */
     
     strcpy(pData->progressText,"HOSIRR - Rendering");
     
-    // mem alloc for a single frame of processing
-    insig_win    = calloc1d(fftsize, sizeof(float));
-    inspec_anl   = calloc1d(nPV * nBins_anl, sizeof(float_complex)); // ma->ca
-    inspec_syn   = calloc1d(nPV * nBins_syn, sizeof(float_complex)); // ma->ca
-    wxyzspec_win = malloc1d(4 * nBins_anl * sizeof(float_complex));
-    saf_rfft_create(&hFFT_syn, fftsize);
-    saf_rfft_create(&hFFT_anl, fftsize/2);
-    
     /* window-hopping loop */
-    int idx = 0;
-    int frameCount = 0;
-    while (idx + winsize < lSig + 2 * winsize)
+    int irIdx = 0; // sample frame index into pvir_pad, increments by hopsize
+    int hopCount = 0;
+    while (irIdx + winsize < lSig + 2 * winsize)
     {
         /* update progress */
-        pData->progress0_1 = (float)idx / (float)(lSig + 2 * winsize);
+        pData->progress0_1 = (float)irIdx / (float)(lSig + 2 * winsize);
  
-        /* Window input and transform to frequency domain */
-        for(int i = 0; i < nPV; i++){
+        /* Transform to frequency domain, one channel at a time */
+        for(int ipv = 0; ipv < nPV; ipv++){
+            
+            // window the input, placing it into a zero-padded buffer insig_win
             for(int j = 0; j < winsize; j++)
-                insig_win[j] = win[j] * pvir_pad[i*lSig_pad + idx + j];
-            // fft
-            saf_rfft_forward(hFFT_syn, insig_win, &inspec_syn[i * nBins_syn]);
+                insig_win[j] = win[j] * pvir_pad[(ipv * lSig_pad) + irIdx + j];
+            
+            // full fft, put in inspec_syn
+            saf_rfft_forward(hFFT_syn, insig_win, &inspec_syn[ipv * nBins_syn]);
+            
             // trim to just analysis bins
             for(int j = 0, k = 0; j < nBins_anl; j++, k += fftsize/winsize)
-                inspec_anl[i * nBins_anl + j] = inspec_syn[i * nBins_syn + k];
+                inspec_anl[(ipv * nBins_anl) + j] = inspec_syn[(ipv * nBins_syn) + k];
         }
         
+        // copy spectrum of windowed input channels into wxyzspec_win (nPV * nBins_anl)
         for(int i = 0; i < nPV; i++)
             memcpy(&wxyzspec_win[i * nBins_anl],
                    &inspec_anl[i * nBins_anl],
                    nBins_anl * sizeof(float_complex));
                     
-        /* Compute broad-band active-intensity vector */
-        // TODO: This could perhaps be simplified, since we're not really using the full covariance matrix
+        /* Compute broadband covariance matrix */
         const float_complex calpha = cmplxf(1.0f, 0.0f), cbeta = cmplxf(0.0f, 0.0f);
-        float intensity[3];
-        float energy = 0.0f;
-        cblas_cgemm(CblasRowMajor, CblasNoTrans, CblasConjTrans, 4, 4, maxDiffFreq_idx+1, &calpha,
+        cblas_cgemm(CblasRowMajor, CblasNoTrans, CblasConjTrans,
+                    4, 4, maxDiffFreq_idx+1, &calpha,
                     wxyzspec_win, nBins_anl,
                     wxyzspec_win, nBins_anl, &cbeta,
                     FLATTEN2D(pvCOV), 4);
+                
+        /* Compute broadband intensity and energy */
+        float intensity[3], energy;
+        float ixyz_smooth[3], energy_smooth, iaMag_smooth;
+        
         for(int i = 0; i < 3; i++)
             intensity[i] = crealf(pvCOV[1+i][0]);
+        energy = 0.0f;
         for(int i = 0; i < 4; i++)
             energy += crealf(pvCOV[i][i])*0.5f;
+        //printf("intensity %.3f, %.3f, %.3f\n", intensity[0], intensity[1], intensity[2]);
         
-        /* Estimating and time averaging of boadband diffuseness */
-        float ixyz_smooth[3];
-        float energy_smooth;
-        float prev_ixyz_smooth[3] = {0.f, 0.f, 0.f};
-        float prev_energy_smooth = 0.f;
-        float normIntensity_smooth = 0.0f;
-        
+        /* Estimating and time averaging of broadband diffuseness */
+        iaMag_smooth = 0.0f;
         for(int i = 0; i < 3; i++) {
             ixyz_smooth[i] = ((1.0f-ALPHA_DIFF_COEFF) * intensity[i]) + (ALPHA_DIFF_COEFF * prev_ixyz_smooth[i]);
             prev_ixyz_smooth[i] = ixyz_smooth[i];
-            normIntensity_smooth += powf( fabsf(ixyz_smooth[i]), 2.0f ); // TODO: abs unnecessary?
+            iaMag_smooth += powf( fabsf(ixyz_smooth[i]), 2.0f ); // TODO: abs unnecessary?
         }
+        iaMag_smooth = sqrtf(iaMag_smooth);
         energy_smooth = ((1.0f-ALPHA_DIFF_COEFF) * energy) + (ALPHA_DIFF_COEFF * prev_energy_smooth);
         prev_energy_smooth = energy_smooth;
-        normIntensity_smooth = sqrtf(normIntensity_smooth);
-        // store broadband diffuseness value
-        diff_win[frameCount] = 1.0f - (normIntensity_smooth / (energy_smooth + 2.23e-10f));
+        //printf("normIntensity_smooth %.3f\n", intensityMag_smooth);
         
-        idx += hopsize;
-        frameCount++;
+        // store broadband diffuseness value
+        diff_win[hopCount] = 1.0f - (iaMag_smooth / (energy_smooth + 2.23e-10f));
+        //printf("diff %.3f\n", diff_win[hopCount]);
+        
+        // advance
+        irIdx += hopsize;
+        hopCount++;
     }
     
     /* diffuse onset */
     
     /* index of max(diffuseness) */
-    int maxIdx;
-    utility_simaxv(diff_win, nDiffFrames, &maxIdx);
+    // begin search for max diffuseness at the first window containing the
+    // direct arrival, where we can expect low diffuseness
+    int hopIdx_direct, maxWinIdx;
+    int directIdx_tmp = pData->directOnsetIdx - winsize;
+    
+    if (directIdx_tmp <= 0) {
+        hopIdx_direct = 0;
+    } else {
+        hopIdx_direct = (int)ceilf((float)directIdx_tmp / hopsize);
+    };
+    utility_simaxv(&diff_win[hopIdx_direct],
+                   nDiffFrames-hopIdx_direct, &maxWinIdx);
+    maxWinIdx += hopIdx_direct; // add the starting point back
     
     /* index of first index above threshold */
-    float maxVal = diff_win[maxIdx];
-    float onsetThresh = maxVal * thresh_fac;
-    int onsetWinIdx = hosirrlib_firstIndexGreaterThan(diff_win, 0, nDiffFrames-1, onsetThresh);
-    pData->diffuseOnsetIdx = onsetWinIdx * hopsize + ((int)hopsize/2); // place onset in the middle of the analysis window
+    const float maxVal      = diff_win[maxWinIdx];
+    const float onsetThresh = maxVal * thresh_fac;
+    const int   onsetWinIdx = hosirrlib_firstIndexGreaterThan(diff_win, 0, nDiffFrames-1, onsetThresh);
+    // note: because pvsig was zero-padded at the head by winsize/2,
+    // there is no need for a half-window offset of the onset index
+    // to place onset in the middle of the analysis window
+    const float diffuseOnsetIdx = onsetWinIdx * hopsize;
+    
+    pData->diffuseOnsetIdx = diffuseOnsetIdx;
+    pData->diffuseOnsetSec = ((float)diffuseOnsetIdx / fs) - pData->t0;
+    
+    printf("     begin search at hop idx: %d\n",   hopIdx_direct);
+    printf("       diffuse onset win idx: %d\n",   onsetWinIdx);
+    printf("    diffuse onset sample idx: %d (%.3f sec)\n", pData->diffuseOnsetIdx, (float)pData->diffuseOnsetIdx / pData->fs);
+    printf(" absolute diffuse onset time: %.3f sec\n", pData->diffuseOnsetSec);
+    printf("         diffuse max win idx: %d\n",   maxWinIdx);
+    printf("           diffuse max value: %.2f\n", maxVal);
+    printf("        diffuse onset thresh: %.2f\n", onsetThresh);
+    
+    // Sanity checks
+    // check that time events are properly increasing
+    if ((pData->t0Idx          > pData->directOnsetIdx) ||
+        (pData->directOnsetIdx > pData->diffuseOnsetIdx))
+        saf_print_error("Order of analyzed events isn't valid. Should be t0Idx < directOnsetIdx < diffuseOnsetIdx.");
+    // check that diffuse onset (from t0) is positive
+    if (pData->diffuseOnsetSec <= 0)
+        saf_print_error("Diffuse onset is negative");
     
     pData->analysisStage = DIFFUSENESS_ONSET_FOUND;
 
@@ -1231,6 +1292,7 @@ void hosirrlib_render
             for(j=0; j<nBins_anl; j++){
                 for(i=0; i<3; i++)
                     intensity[i] = crealf( ccmulf(conjf(WXYZ_sec[j]), WXYZ_sec[(i+1)*nBins_anl+j]));
+                printf("intensity %.7f, %.7f, %.7f\n", intensity[0], intensity[1], intensity[2]);
                 azim[n*nBins_anl+j] = atan2f(intensity[1], intensity[0])*180.0f/M_PI;
                 elev[n*nBins_anl+j] = atan2f(intensity[2], sqrtf(powf(intensity[0], 2.0f) + powf(intensity[1], 2.0f)))*180.0f/M_PI;
             }
@@ -1245,6 +1307,8 @@ void hosirrlib_render
             energy = 0.0f;
             for(i=0; i<4; i++)
                 energy += crealf(pvCOV[i][i])*0.5f;
+            
+//                    printf("intensity %.5f, %.5f, %.5f\n", intensity[0], intensity[1], intensity[2]);
             
             /* Estimating and time averaging of boadband diffuseness */
             normSecIntensity_smoothed = 0.0f;

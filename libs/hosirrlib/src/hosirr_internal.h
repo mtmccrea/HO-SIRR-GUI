@@ -113,10 +113,15 @@ typedef struct _hosirrlib
     float**  H_bandFilt;    // nBand x bandFiltOrder + 1
     float*   bandXOverFreqs; // 1 x nBand-1
     
-    int nSH, nSamp, fs, shOrder;    // input vars
+    int nSH, nSamp, fs, shOrder; // input vars
     int nDir, nBand, bandFiltOrder; // analysis vars
-    int directOnsetIdx, diffuseOnsetIdx;
-    float duration;                 // seconds
+    int directOnsetIdx; // direct arrival onset index within the input RIR
+    int diffuseOnsetIdx; // diffuse onset sample index within the input RIR
+    float diffuseOnsetSec; // diffuse onset from t0, in seconds
+    float sourceDistance; // source->receiver distance
+    float t0; // time-0: when the sound leaves the source (directOnset - sourceDistance/343)
+    int t0Idx; // sample index of t0 (can be negative)
+    float duration; // seconds
     
     ANALYSIS_STAGE analysisStage;
     STATIC_BEAM_TYPES beamType;

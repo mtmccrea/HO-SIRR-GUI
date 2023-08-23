@@ -94,7 +94,6 @@ typedef struct _hosirrlib
     /* new hodecaylib */
     
     // depend only on nDir
-    // TODO: are const pointers overkill here?
     float** encBeamCoeffs;  // nDir x nSH
     float** decBeamCoeffs;  // nDir x nSH
     float** dirGainBuf;     // nBand x nDir

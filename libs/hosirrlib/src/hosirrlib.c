@@ -703,20 +703,20 @@ void hosirrlib_splitBands(
     
     /* Apply filterbank to rir_bands.
      * Because of fftconv's indexing, it expects filter coefficients
-     * for each channel. So we do one channel and band at a time.
-     * The output size will be nSamp + filtOrder.
+     * for each channel. So we do one band/channel at a time.
+     * The output length will be nSamp + filtOrder.
      * See fftconv(): y_len = x_len + h_len - 1; */
     float* temp = malloc1d((nInSamp + filtOrder) * sizeof(float));
     
     for(int ish = 0; ish < pData->nSH; ish++) {
         for(int ib = 0; ib < pData->nBand; ib++) {
-            fftconv(&inBuf[ish][0],            // input: 1 channel at a time
+            fftconv(&inBuf[ish][0],             // input: 1 channel at a time
                     &pData->H_bandFilt[ib][0],  // band filter coeffs
                     nInSamp,                    // input length
                     filtOrder + 1,              // filter length
                                                 // add 1 for internal rounding and compensate for out length calc y_len = x_len + h_len - 1; (?)
                     1,                          // 1 channel at a time
-                    temp);
+                    temp);                      // write to staging buffer
             
             /* Copy temp to out */
             memcpy((void*)&bndBuf[ib][ish][0],
@@ -741,31 +741,31 @@ void hosirrlib_beamformRIR(
         return; // TODO: handle fail case
     }
     
-    const int nBeam     = pData->nDir;
-    const int nSamp     = pData->nSamp;
-    const int nBand     = pData->nBand;
-    const int nSH       = pData->nSH;
-    const int shOrder   = pData->shOrder;
+    const int nDir    = pData->nDir;
+    const int nSamp   = pData->nSamp;
+    const int nBand   = pData->nBand;
+    const int nSH     = pData->nSH;
+    const int shOrder = pData->shOrder;
     
     float * c_l = malloc1d((shOrder + 1) * sizeof(float)); // z beam coeffs, only shOrder + 1 are used
     
     /* Apply beamformer */
     // TODO: These beamforming coeffs only need to be updated if nSH (input) or the spherical design (output) changes, so could be refactored
     /* Calculate beamforming coeffients */
-    for (int ib = 0; ib < nBeam; ib++) {
+    for (int idir = 0; idir < nDir; idir++) {
         switch(pData->beamType){
             case STATIC_BEAM_TYPE_CARDIOID:
-                beamWeightsCardioid2Spherical(shOrder,  c_l); break;
+                beamWeightsCardioid2Spherical(shOrder, c_l); break;
             case STATIC_BEAM_TYPE_HYPERCARDIOID:
-                beamWeightsHypercardioid2Spherical(shOrder,  c_l); break;
+                beamWeightsHypercardioid2Spherical(shOrder, c_l); break;
             case STATIC_BEAM_TYPE_MAX_EV:
-                beamWeightsMaxEV(shOrder,  c_l); break;
+                beamWeightsMaxEV(shOrder, c_l); break;
         }
         rotateAxisCoeffsReal(shOrder,
                              (float*)c_l,
-                             (SAF_PI / 2.0f) - (pData->loudpkrs_dirs_deg[ib][1] * SAF_PI / 180.0f),
-                             pData->loudpkrs_dirs_deg[ib][0] * SAF_PI / 180.0f,
-                             &pData->decBeamCoeffs[ib][0]);
+                             (SAF_PI / 2.0f) - (pData->loudpkrs_dirs_deg[idir][1] * SAF_PI / 180.0f),
+                             pData->loudpkrs_dirs_deg[idir][0] * SAF_PI / 180.0f,
+                             &pData->decBeamCoeffs[idir][0]);
     }
     /* Apply beam weights
     // float beamWeights[MAX_NUM_BEAMS][MAX_NUM_SH_SIGNALS]; A
@@ -784,11 +784,11 @@ void hosirrlib_beamformRIR(
      // C: float*** rirBuf_beams;  // nBand x nDir x nSamp */
     for (int bd = 0; bd < nBand; bd++) {
         cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                    nBeam, nSamp, nSH, 1.0f,
-                    (const float*)&pData->decBeamCoeffs[0][0], nSH, // A, "1st" dim of A (row-major)
+                    nDir, nSamp, nSH, 1.0f,
+                    (const float*)&pData->decBeamCoeffs[0][0],    nSH,   // A, 1st dim of A (row-major)
                     (const float*)&pData->rirBuf_bands[bd][0][0], nSamp, // B, 1st dim of B
                     0.0f, // beta scalar for C
-                    (float*)&pData->rirBuf_beams[bd][0][0], nSamp); // C, 1st dim of C
+                    (float*)&pData->rirBuf_beams[bd][0][0], nSamp);      // C, 1st dim of C
     }
     pData->analysisStage = BEAMFORMED;
     
@@ -811,10 +811,9 @@ void hosirrlib_calcEDC(
         return; // TODO: handle fail case
     }
     
-    const int nSamp = pData->nSamp;
-    const int nDir  = pData->nDir;
     const int nBand = pData->nBand;
-    const int nSH   = pData->nSH;
+    const int nDir  = pData->nDir;
+    const int nSamp = pData->nSamp;
     
     /* Copy the RIR band beams into EDC buffer */
     utility_svvcopy(FLATTEN3D(inBuf),
@@ -824,13 +823,13 @@ void hosirrlib_calcEDC(
     float*** const edc = edcBuf;
     double sum = 0.0; // TODO: double?
 
-    /* EDC: reverse cummulative sum of signal energy, one channel at a time */
+    /* EDC: reverse cummulative sum of signal energy, one band/channel at a time */
     for (int bd = 0; bd < nBand; bd++) {
         for (int ch = 0; ch < nDir; ch++) {
             sum = 0.0;
             // reverse iterate for backwards cumulative sum
             for (int i = nSamp - 1; i > -1; i--) {
-                // in-place: replace signal with its EDC
+                // replace signal with its EDC in-place
                 // TODO: optim by vectorizing
                 sum += edc[bd][ch][i] * edc[bd][ch][i]; // energy
                 edc[bd][ch][i] = (float)(10.0 * log10(sum)); // store in dB
@@ -886,6 +885,7 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
             } else {
                 st_end_meas[bd][ch][0] = start_t60;
             }
+            //printf("start idx: %d\n", st_end_meas[bd][ch][0]);
             
             int end_t60 = hosirrlib_firstIndexLessThan(&edc[bd][ch][0],
                                                        start_t60, nSamp - 1,
@@ -897,6 +897,7 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
             } else {
                 st_end_meas[bd][ch][1] = beginIdx + end_t60;
             }
+            //printf("\tend idx: %d\n", st_end_meas[bd][ch][1]);
         }
     }
     
@@ -910,34 +911,37 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
      */
     
     /* Measure the t60 */
-    for (int ib = 0; ib < nBand; ib++) {
-        for (int ich = 0; ich < nChan; ich++) {
-            int st_meas    = st_end_meas[ib][ich][0];
-            int end_meas   = st_end_meas[ib][ich][1];
+    for (int ibnd = 0; ibnd < nBand; ibnd++) {
+        for (int idir = 0; idir < nChan; idir++) {
+            int st_meas    = st_end_meas[ibnd][idir][0];
+            int end_meas   = st_end_meas[ibnd][idir][1];
             int nSamp_meas = end_meas - st_meas + 1;
             
-            float y_mean = sumf(&edc[ib][ich][st_meas], nSamp_meas) / nSamp_meas;
+            float y_mean = sumf(&edc[ibnd][idir][st_meas], nSamp_meas) / nSamp_meas;
             
             /* Construct a vector with a slope of 1:samp with zero mean */
-            float first_val = (nSamp_meas - 1) / 2.f; // first value
+            float first_val = (nSamp_meas - 1) / -2.f; // first value
             for (int i = 0; i < nSamp_meas; i++) {
                 x_slope1[i] = first_val + i;
             };
             // remove mean from EDC, within the measurement span
-            utility_svssub(&edc[ib][ich][st_meas], &y_mean, nSamp_meas, y_edc0m);
-            // covariance x * y and x * x
+            utility_svssub(&edc[ibnd][idir][st_meas], &y_mean, nSamp_meas, y_edc0m);
+            // covariance: x*y and x*x
             utility_svvmul(x_slope1, y_edc0m, nSamp_meas, stage);
             float c_xy = sumf(stage, nSamp_meas);
             utility_svvmul(x_slope1, x_slope1, nSamp_meas, stage);
             float c_xx = sumf(stage, nSamp_meas);
             // slope dB/samp
             float dbPerSamp = c_xy / c_xx;
+            //printf("dbPerSamp: %.7f\n", dbPerSamp);
             // write out
-            pData->t60Buf[ib][ich] = -60.f / dbPerSamp / fs;
-            // debug
-            printf("t60: dir %d band %d  %.2f sec\n", ich, ib, pData->t60Buf[ib][ich]);
+            pData->t60Buf[ibnd][idir] = (-60.0f / dbPerSamp) / fs;
         }
     }
+    // debug
+    for (int idir = 0; idir < nChan; idir++)
+        for (int ibnd = 0; ibnd < nBand; ibnd++)
+            printf("t60: dir %d band %d  %.2f sec\n", idir, ibnd, pData->t60Buf[ibnd][idir]);
         
     free(x_slope1);
     free(y_edc0m);
@@ -969,7 +973,7 @@ int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float 
 }
 
 // for the GUI to display the EDCs
-void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcCopy, float displayRange)
+void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcOut, float displayRange)
 {
     /*
      Note edcBuf_rir are foat*** nband x ndir x nsamp, but dirEDC pointer
@@ -980,51 +984,59 @@ void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcCopy, float dis
     
     const int nBand = pData->nBand;
     const int nSamp = pData->nSamp;
-    const int nDir = pData->nDir;
-    float*** const edc = pData->edcBuf_rir;
-    float* const edc_flat = (float*)FLATTEN3D(pData->edcBuf_rir);
-    const int flatLen = nBand * nDir * nSamp;
+    const int nDir  = pData->nDir;
+    float*** const edcIn = pData->edcBuf_rir;
     
     if(pData->analysisStage >= RIR_EDC_DONE) {    // confirm EDCs are rendered
         
         /* normalise to range [-1 1] for plotting */
         float maxVal, minVal, range, add, scale, sub;
-        // intializse to first/last value of first channel
-        maxVal = edc[0][0][0];
-        minVal = maxVal - displayRange; // just display the top displayRange in dB
-        // minVal = edc[0][0][nSamp-1];
+        
+        maxVal = edcIn[0][0][0];        // intializse to first value of first channel
+        minVal = maxVal - displayRange; // just display the uper displayRange in dB
         // check the first and last values of every channel
         for (int ib = 1; ib < nBand; ib++)
-            for (int ich = 0; ich < nDir; ich++) {
-                if (edc[ib][ich][0] > maxVal)
-                    maxVal = edc[ib][ich][0];
-                // if (edc[ib][ich][nSamp-1] < minVal)
-                //     minVal = edc[ib][ich][nSamp-1];
-            }
+            for (int ich = 0; ich < nDir; ich++)
+                if (edcIn[ib][ich][0] > maxVal)
+                    maxVal = edcIn[ib][ich][0];
         
         range = maxVal - minVal;
-        add = minVal * -1.f;
+        add   = minVal * -1.f;
         scale = 2.0f/fabsf(range);
-        sub = 1.f;
-        printf("max %.1f, min %.1f, rng %.1f, add %.1f, scl %.1f, sub %.1f, ",
-               maxVal, minVal, range, add, scale, sub);
+        sub   = 1.f;
+        //printf("max %.1f, min %.1f, rng %.1f, add %.1f, scl %.1f, sub %.1f, ",
+        //       maxVal, minVal, range, add, scale, sub);
         
-        for(int i = 0; i < pData->nDir; i++) {
-            utility_svsadd(&(pData->edcBuf_rir[0][i][0]), // [bnd][ch][smp]
-                           &add, nSamp,
-                           &edcCopy[i][0]); // [ch][smp]
-            utility_svsmul(&edcCopy[i][0],  // [ch][smp]
-                           &scale, nSamp,
-                           &edcCopy[i][0]); // [ch][smp]
-            utility_svssub(&edcCopy[i][0],  // [ch][smp]
-                           &sub, nSamp,
-                           &edcCopy[i][0]); // [ch][smp]
-        }
-        // simple copy
-        //        for(int i = 0; i < pData->nDir; i++)
-        //            memcpy(&edcCopy[i][0],                    // copy-to channel
-        //                   &(pData->edcBuf_rir[0][i][0]), // [bnd][ch][smp]
-        //                   nSamp * sizeof(float));
+//        for(int i = 0; i < nDir; i++) {
+////            int bndIdx = 0; // for just lowest band of all directions
+////            int chIdx = i;
+//            printf("TEMP: viewing band channels of the first direction");
+//            int bndIdx = i % nBand; // cycle through the bands of the chIdx
+//            int chIdx = 0;
+//
+//            utility_svsadd(&(edcIn[bndIdx][chIdx][0]), // [bnd][ch][smp]
+//                           &add, nSamp,
+//                           &edcOut[i][0]); // [ch][smp]
+//            utility_svsmul(&edcOut[i][0],  // [ch][smp]
+//                           &scale, nSamp,
+//                           &edcOut[i][0]); // [ch][smp]
+//            utility_svssub(&edcOut[i][0],  // [ch][smp]
+//                           &sub, nSamp,
+//                           &edcOut[i][0]); // [ch][smp]
+//        }
+        
+//         simple copy
+//                for(int i = 0; i < pData->nDir; i++)
+//                    memcpy(&edcOut[i][0],                    // copy-to channel
+//                           &(pData->edcBuf_rir[0][i][0]),    // [bnd][ch][smp]
+//                           nSamp * sizeof(float));
+
+        // TODO: Looks likethe band filtering isn't working
+                for(int i = 0; i < pData->nDir; i++)
+                    memcpy(&edcOut[i][0],                    // copy-to channel
+                           &(pData->rirBuf_bands[i%nBand][0][0]), // [bnd][ch][smp]
+                           nSamp * sizeof(float));
+        
     }
 }
 

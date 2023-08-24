@@ -84,7 +84,7 @@ void hosirrlib_create
     
     /* Initialize octave band filters */
     pData->nBand = 8;
-    pData->bandFiltOrder = 400;
+    pData->bandFiltOrder = 40;
     hosirrlib_initBandFilters(pData);
     
     /* Initialize spherical desing for directional analysis */
@@ -166,14 +166,18 @@ void hosirrlib_initBandFilters(void* const hHS)
         
         pData->bandXOverFreqs = malloc1d((pData->nBand-1) * sizeof(float));
         
-        // 'bandFreqs' are basically center freqs used to determine crossover freqs.
-        // The lowest and highest bands are LP and HP filters, so 125 Hz isn't really a "center freq" of the LPF. And the HPF "center freq" would implicitly be 16kHz.
-        // Must be size pData->nBand-1
+        // bandFreqs are "center freqs" used to determine crossover freqs.
+        // The lowest and highest bands are LP and HP filters,
+        // so 125 Hz "center freq" of the LPF becomes a crossover of 125 * sqrt(2) = 177 Hz.
+        // And the HPF cut-on is 8k * sqrt(2) = 11313 Hz.
+        // Must be size pData->nBand-1.
         float bandFreqs[7] = {125.f, 250.f, 500.f, 1000.f, 2000.f, 4000.f, 8000.f};
         
         // The xover freqs are the half-octave step above of the center freqs.
-        for (int i=0; i < pData->nBand-1; i++)
+        for (int i=0; i < pData->nBand-1; i++) {
             pData->bandXOverFreqs[i] = bandFreqs[i] * sqrtf(2.0f);
+            printf("band %d xover %.4f\n", i, pData->bandXOverFreqs[i]);
+        }
         
         // Allocate filter coefficients (nBand x bandFiltOrder + 1)
         pData->H_bandFilt = (float**)realloc2d((void**)pData->H_bandFilt,
@@ -181,10 +185,22 @@ void hosirrlib_initBandFilters(void* const hHS)
                                                pData->bandFiltOrder + 1,
                                                sizeof(float));
         // Compute FIR Filterbank coefficients
-        FIRFilterbank(pData->bandFiltOrder, pData->bandXOverFreqs, pData->nBand-1,
-                      pData->fs, WINDOWING_FUNCTION_HAMMING, 1,
-                      FLATTEN2D(pData->H_bandFilt));
+        FIRFilterbank(pData->bandFiltOrder,
+                      pData->bandXOverFreqs,
+                      pData->nBand-1,
+                      pData->fs,
+                      WINDOWING_FUNCTION_HAMMING,
+                      1,
+                      FLATTEN2D(pData->H_bandFilt)
+                      );
+//        for (int ib = 0; ib<pData->nBand; ib++) {
+//            printf("band %d coeffs\n", ib);
+//            for (int icoeff = 0; icoeff<pData->bandFiltOrder+1; icoeff++)
+//                printf("\t%.9f\n", pData->H_bandFilt[ib][icoeff]);
+//        }
     }
+    
+    hosirrlib_inspectFilts(pData);
 }
 
 int hosirrlib_setRIR
@@ -672,8 +688,8 @@ void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac)
 
 
 void hosirrlib_splitBands(
-                          void* const hHS,
-                          float** const inBuf,
+                          void*    const hHS,
+                          float**  const inBuf,
                           float*** const bndBuf,
                           int removeFiltDelayFLAG,
                           ANALYSIS_STAGE thisStage)
@@ -706,29 +722,114 @@ void hosirrlib_splitBands(
      * for each channel. So we do one band/channel at a time.
      * The output length will be nSamp + filtOrder.
      * See fftconv(): y_len = x_len + h_len - 1; */
-    float* temp = malloc1d((nInSamp + filtOrder) * sizeof(float));
+//    float* stage = malloc1d((nInSamp + filtOrder) * sizeof(float));
+//
+//    for(int ish = 0; ish < pData->nSH; ish++) {
+//        for(int ib = 0; ib < pData->nBand; ib++) {
+//            fftconv(&inBuf[ish][0],             // input: 1 channel at a time
+//                    &pData->H_bandFilt[ib][0],  // band filter coeffs
+//                    nInSamp,                    // input length
+//                    filtOrder + 1,              // filter length
+//                    1,                          // 1 channel at a time
+//                    stage);                     // write to staging buffer
+//
+//            /* Copy staging buffer to out */
+//            memcpy((void*)&bndBuf[ib][ish][0],
+//                   &stage[startCopyIdx],
+//                   nInSamp * sizeof(float));
+//        }
+//    }
+//    pData->analysisStage = thisStage;
+//    free(stage);
+
+    
+//    // TEST: create coefficients from simple spectrum and pass those
+//    float y_len = nInSamp + pData->bandFiltOrder+1 - 1;
+//    int fftSize =  (int)((float)nextpow2(y_len)+0.5f);
+//    int nBins = fftSize/2+1;
+//    float* h0 = calloc1d(fftSize, sizeof(float));
+//    float_complex* H = malloc1d(nBins * sizeof(float_complex));
+//
+//    // spectrum ramp DC->nyq 0->1
+//    float magstep = 1.f / (float)nBins;
+//    for (int ib = 0; ib < nBins; ib++)
+//        H[ib] = cmplxf(magstep * ib, 0.f);
+
     
     for(int ish = 0; ish < pData->nSH; ish++) {
-        for(int ib = 0; ib < pData->nBand; ib++) {
-            fftconv(&inBuf[ish][0],             // input: 1 channel at a time
-                    &pData->H_bandFilt[ib][0],  // band filter coeffs
+        for(int ibd = 0; ibd < pData->nBand; ibd++) {
+            fftfilt(&inBuf[ish][0],             // input: 1 channel at a time
+                    &pData->H_bandFilt[ibd][0], // band filter coeffs
                     nInSamp,                    // input length
                     filtOrder + 1,              // filter length
-                                                // add 1 for internal rounding and compensate for out length calc y_len = x_len + h_len - 1; (?)
                     1,                          // 1 channel at a time
-                    temp);                      // write to staging buffer
-            
-            /* Copy temp to out */
-            memcpy((void*)&bndBuf[ib][ish][0],
-                   &temp[startCopyIdx],
-                   nInSamp * sizeof(float));
+                    &bndBuf[ibd][ish][0]);      // write out
         }
     }
+//    free(h0);
+//    free(H);
+    
     pData->analysisStage = thisStage;
-    free(temp);
 }
 
 
+// DEBUG FUNCTION
+void hosirrlib_inspectFilts(void* const hHS)
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("inspecting filters.\n");
+    
+    void* hfft;
+    
+    /* prep */
+    int h_len = pData->bandFiltOrder+1;
+//    int y_len = h_len - 1;
+    int y_len = 127;
+    int fftSize =  (int)((float)nextpow2(y_len)+0.5f);
+    int nBins = fftSize/2+1;
+    
+//    float* h = &pData->H_bandFilt[0][0]; // just band 1, low pass, for now
+    float* h = calloc1d(pData->bandFiltOrder+1, sizeof(float));
+    h[(int)((pData->bandFiltOrder+1)/2.f)] = 1.f; // impulse
+    
+    float* h0 = calloc1d(fftSize, sizeof(float)); // time-domain filter
+    float* y0 = calloc1d(fftSize, sizeof(float)); // time-domain output
+    
+    float_complex* H = malloc1d(nBins * sizeof(float_complex)); // freq domain filter
+    
+    saf_rfft_create(&hfft, fftSize);
+    
+    
+    for(int i=0; i<1; i++){ // just one channel
+        
+        /* copy the time-domain filter kernel into the head of the zero-padding buffer, prior to fft */
+        memcpy(h0, &h, h_len*sizeof(float));
+        
+        // TD filter to freq domain h0->H
+        saf_rfft_forward(hfft, h0, H);
+        
+//                // TEST: THIS WORKS, fill spectrum with a ramp of values with magnitudes 0->1 to just observe the filtering works
+//                float magstep = 1.f / (float)nBins;
+//                for (int ib = 0; ib < nBins; ib++)
+//                    H[ib] = cmplxf(magstep*ib, 0.f);
+        // TEST: write out magnitude of the filters
+        for (int ib = 0; ib < nBins; ib++) {
+            y0[ib] = cabsf(H[ib]);
+            printf("\tmag %d,  %.4f\n", ib, y0[ib]);
+        }
+        for (int is = 0; is < pData->bandFiltOrder+1; is++) {
+            printf("\tir %d,  %.4f\n", is, h[is]);
+        }
+//        memcpy(&y[i*y_len], y0, y_len*sizeof(float));
+
+    }
+    saf_rfft_destroy(&hfft);
+    free(h0);
+    free(y0);
+    free(H);
+}
+    
+    
 void hosirrlib_beamformRIR(
                            void* const hHS)
 {
@@ -938,10 +1039,10 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
             pData->t60Buf[ibnd][idir] = (-60.0f / dbPerSamp) / fs;
         }
     }
-    // debug
-    for (int idir = 0; idir < nChan; idir++)
-        for (int ibnd = 0; ibnd < nBand; ibnd++)
-            printf("t60: dir %d band %d  %.2f sec\n", idir, ibnd, pData->t60Buf[ibnd][idir]);
+//    // debug
+//    for (int idir = 0; idir < nChan; idir++)
+//        for (int ibnd = 0; ibnd < nBand; ibnd++)
+//            printf("t60: dir %d band %d  %.2f sec\n", idir, ibnd, pData->t60Buf[ibnd][idir]);
         
     free(x_slope1);
     free(y_edc0m);
@@ -1025,18 +1126,44 @@ void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcOut, float disp
 //                           &edcOut[i][0]); // [ch][smp]
 //        }
         
-//         simple copy
-//                for(int i = 0; i < pData->nDir; i++)
-//                    memcpy(&edcOut[i][0],                    // copy-to channel
-//                           &(pData->edcBuf_rir[0][i][0]),    // [bnd][ch][smp]
-//                           nSamp * sizeof(float));
+/* TESTS */
+//        // THIS WORKS: simple copy input to output
+//        for(int i = 0; i < pData->nDir; i++)
+//            memcpy(&edcOut[i][0],             // copy-to channel
+//                   &(pData->rirBuf[i][0]),    // [nsh][smp]
+//                   nSamp * sizeof(float));
 
-        // TODO: Looks likethe band filtering isn't working
-                for(int i = 0; i < pData->nDir; i++)
-                    memcpy(&edcOut[i][0],                    // copy-to channel
-                           &(pData->rirBuf_bands[i%nBand][0][0]), // [bnd][ch][smp]
-                           nSamp * sizeof(float));
+//        // THIS WORKS: write out DC values
+//        float** dcs = (float**)calloc2d(nDir, nSamp, sizeof(float));
+//        for(int id = 0; id < nDir; id++) {
+//            float addThis = 1.f/8 * (id%8);
+//            printf("add this: %.2f\n", addThis);
+//            utility_svsadd(&dcs[id][0], &addThis, nSamp, &edcOut[id][0]);
+//        }
+//        free(dcs);
         
+        // run input channels through band filters and write directly out
+        for(int id = 0; id < pData->nDir; id++) {
+            fftfilt(&pData->rirBuf[id][0],             // input: 1 channel at a time
+                    &pData->H_bandFilt[id % pData->nBand][0],  // band filter coeffs
+                    pData->nSamp,                    // input length
+                    pData->bandFiltOrder + 1,              // filter length
+                    // add 1 for internal rounding and compensate for out length calc y_len = x_len + h_len - 1; (?)
+                    1,                          // 1 channel at a time
+                    &edcOut[id][0]);       // write out
+        }
+
+
+        
+        
+//        // TODO: Looks likethe band filtering isn't working
+//        for(int i = 0; i < pData->nDir; i++) {
+//            memcpy(&edcOut[i][0],                    // copy-to channel
+//                   &(pData->rirBuf_bands[i%nBand][3][0]), // [bnd][ch][smp]
+//                   nSamp * sizeof(float));
+//        }
+    } else {
+        saf_print_error("copyNormalizedEDCBufs: EDC hasn't been rendered so can't copy it out.")
     }
 }
 

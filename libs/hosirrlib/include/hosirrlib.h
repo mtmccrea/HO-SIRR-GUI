@@ -70,19 +70,20 @@ typedef enum {
 
 /** SRIR analysis stages */
 typedef enum {
-    RIR_NOT_LOADED = 1, /**< No RIR is set/loaded */
-    RIR_LOADED,         /**< RIR is read into member buffer */
-    ANALYSIS_BUFS_LOADED, /**< Staging buffers for intermediate processing are loaded */
-    DIRECT_ONSET_FOUND, /**< First arrival  position is found */
+    RIR_NOT_LOADED = 1,     /**< No RIR is set/loaded */
+    RIR_LOADED,             /**< RIR is read into member buffer */
+    FILTERS_INTITIALIZED,   /**< Filterbank is initialized */
+    ANALYSIS_BUFS_LOADED,   /**< Staging buffers for intermediate processing are loaded */
+    DIRECT_ONSET_FOUND,     /**< First arrival  position is found */
     DIFFUSENESS_ONSET_FOUND, /**< T60s are calculated for each beam/band */
     RIR_BANDS_SPLIT,        /**< RIR is split into bands */
-    BEAMFORMED,         /**< SHD signal has been beamformed into directional signals (by band)  */
+    BEAMFORMED,             /**< SHD signal has been beamformed into directional signals (by band)  */
     RIR_EDC_DONE,           /**< EDCs are calculated for each beam/band */
-    T60_DONE,           /**< T60s are calculated for each beam/band */
-    RIR_PROCESSED,      /**< RIR has been fully processed and ready for FDN synthesis */
+    T60_DONE,               /**< T60s are calculated for each beam/band */
+    RIR_PROCESSED,          /**< RIR has been fully processed and ready for FDN synthesis */
     FDN_BANDS_SPLIT,        /**< FDN is split into bands */
     FDN_EDC_DONE,           /**< EDCs are calculated for each beam/band of the FDN channels */
-    DIRGAIN_DONE        /**< Directional gain has been calculated between FDN and RIR channels/bands */
+    DIRGAIN_DONE            /**< Directional gain has been calculated between FDN and RIR channels/bands */
 } ANALYSIS_STAGE;
 
 
@@ -241,6 +242,7 @@ void hosirrlib_processRIR(void* const hHS);
 void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB);
 void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac);
 void hosirrlib_splitBands(void* const hHS, float** const inBuf, float*** const bndBuf, int removeFiltDelayFLAG, ANALYSIS_STAGE stage);
+void hosirrlib_splitBandsTD(void* const hHS, float** const inBuf, float*** const bndBuf, int removeFiltDelayFLAG, ANALYSIS_STAGE stage);
 void hosirrlib_beamformRIR(void* const hHS);
 void hosirrlib_calcEDC(void* const hHS, float*** const inBuf, float*** const edcBuf, ANALYSIS_STAGE stage);
 void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb, const int beginIdx);

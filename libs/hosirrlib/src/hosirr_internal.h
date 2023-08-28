@@ -76,7 +76,7 @@ extern "C" {
 #define MAX_WINDOW_LENGTH ( 256 )
 #define MIN_WINDOW_LENGTH ( 32 )
 #define MAX_DIFF_FREQ_HZ ( 3000 )
-#define ALPHA_DIFF_COEFF ( 0.5f )
+#define ALPHA_DIFF_COEFF ( 0.7165f )
 
 
 /* ========================================================================== */
@@ -112,7 +112,8 @@ typedef struct _hosirrlib
     float**  H_bandFilt;    // nBand x bandFiltOrder + 1
     float*   bandXOverFreqs; // 1 x nBand-1
     
-    int nSH, nSamp, fs, shOrder; // input vars
+    int nSH, nSamp, shOrder; // input vars
+    float fs;
     int nDir, nBand, bandFiltOrder; // analysis vars
     int directOnsetIdx; // direct arrival onset index within the input RIR
     int diffuseOnsetIdx; // diffuse onset sample index within the input RIR

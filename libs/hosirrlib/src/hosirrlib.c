@@ -87,6 +87,9 @@ void hosirrlib_create
     pData->bandFiltOrder = 400;
     // can't initialize filters yet... input RIR is required for knowing fs
     
+    /* Other constants */
+    pData->diffuseMin = 0.3f;
+    
     /* Initialize spherical desing for directional analysis */
     pData->beamType = STATIC_BEAM_TYPE_HYPERCARDIOID;
     // default design currently just set by enum LOUDSPEAKER_ARRAY_PRESET_15PX
@@ -399,10 +402,9 @@ void hosirrlib_processRIR
     hosirrlib_calcEDC(pData, pData->rirBuf_beams, pData->edcBuf_rir, RIR_EDC_DONE);
     hosirrlib_calcT60(pData,
                       -2.f, 15.f, // startDb (<= 0), spanDb (> 0)
-//                      pData->directOnsetIdx + (int)(pData->fs * directLagSec) // measure after this index
+                      // pData->directOnsetIdx + (int)(pData->fs * directLagSec) // measure after this index
                       pData->diffuseOnsetIdx // measure from diffuseOnset
                       );
-
 }
 
 void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB)
@@ -674,7 +676,14 @@ void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac)
     // note: because pvsig was zero-padded at the head by winsize/2,
     // there is no need for a half-window offset of the onset index
     // to place onset in the middle of the analysis window
-    const float diffuseOnsetIdx = onsetWinIdx * hopsize;
+    float diffuseOnsetIdx = onsetWinIdx * hopsize;
+    
+    if (maxVal < pData->diffuseMin) {
+        // TODO: better handling of diffuseness fail
+        saf_print_warning("Diffuseness didn't exceed the valid threshold.\nFalling back on directOnset +10ms.");
+        printf("diffuseness: %.2f < %.2f\n", maxVal, pData->diffuseMin);
+        diffuseOnsetIdx = pData->directOnsetIdx + (int)(0.005 * fs);
+    }
     
     pData->diffuseOnsetIdx = diffuseOnsetIdx; // diffuse onset in the sample buffer
     pData->diffuseOnsetSec = ((float)diffuseOnsetIdx / fs) - pData->t0; // diffuse onset time in the *room*
@@ -1062,18 +1071,18 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
     const int   nBand = pData->nBand;
     const int   nSH   = pData->nSH;
     const float fs    = pData->fs;
+    float ***edc      = pData->edcBuf_rir; // TODO: this will become an arg when/if FDN needs to be measured
     
-    float ***edc = pData->edcBuf_rir; // TODO: this will become an arg when/if FDN needs to be measured
-    
-    float* const x_slope1 = malloc1d(nSamp * sizeof(float)); // vector with slope of 1/samp
-    float* const y_edc0m  = malloc1d(nSamp * sizeof(float)); // zero-mean EDC
-    float* const stage    = malloc1d(nSamp * sizeof(float)); // staging buffer
+    float* const x_slope1    = malloc1d(nSamp * sizeof(float)); // vector with slope of 1/samp
+    float* const y_edc0m     = malloc1d(nSamp * sizeof(float)); // zero-mean EDC
+    float* const stage       = malloc1d(nSamp * sizeof(float)); // staging buffer
     int*** const st_end_meas = (int***)malloc3d(nBand, nChan, 2, sizeof(int)); // start and end samples to measure t60 in each channel
 
     /* find the start and end points of the measurement */
     for (int bd = 0; bd < nBand; bd++) {
         for (int ch = 0; ch < nChan; ch++) {
             float edcMax = edc[bd][ch][beginIdx];
+            printf("edcMax: %.4f\n", edcMax);
             
             int start_t60 = hosirrlib_firstIndexLessThan(&edc[bd][ch][0],
                                                          beginIdx, nSamp - 1,
@@ -1192,6 +1201,20 @@ void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcOut, float disp
         float maxVal, minVal, range, add, scale, sub;
 
         maxVal = edcIn[0][0][0];        // intializse to first value of first channel
+        
+        // temp - see which channel the max value was found on
+        int maxBndIdx = 0;
+        int maxDirIdx = 0;
+        for(int ib = 0; ib < nBand; ib++) {
+            for(int id = 0; id < nDir; id++) {
+                float val0 = edcIn[ib][id][0];
+                printf("\tchan val dir %d, bnd %d: %.2f\n", id, ib, val0);
+                if (val0 > maxVal)
+                    maxVal = edcIn[ib][id][0]; maxBndIdx = ib; maxDirIdx = id;
+            }
+        }
+        printf(">>> max val found on dir %d, bnd %d: %.2f\n\n", maxDirIdx, maxBndIdx, maxVal);
+        
         minVal = maxVal - displayRange; // just display the uper displayRange in dB
         // check the first and last values of every channel
         for (int ib = 1; ib < nBand; ib++)
@@ -1206,23 +1229,23 @@ void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcOut, float disp
         //printf("max %.1f, min %.1f, rng %.1f, add %.1f, scl %.1f, sub %.1f, ",
         //       maxVal, minVal, range, add, scale, sub);
         
-        for(int i = 0; i < nDir; i++) {
-//            int bndIdx = 0; // for just lowest band of all directions
-//            int chIdx = i;
-            printf("TEMP: viewing band channels of the first direction");
-            int bndIdx = i % nBand; // cycle through the bands of the chIdx
-            int chIdx = 0;
-
-            utility_svsadd(&(edcIn[bndIdx][chIdx][0]), // [bnd][ch][smp]
-                           &add, nSamp,
-                           &edcOut[i][0]); // [ch][smp]
-            utility_svsmul(&edcOut[i][0],  // [ch][smp]
-                           &scale, nSamp,
-                           &edcOut[i][0]); // [ch][smp]
-            utility_svssub(&edcOut[i][0],  // [ch][smp]
-                           &sub, nSamp,
-                           &edcOut[i][0]); // [ch][smp]
-        }
+//        for(int i = 0; i < nDir; i++) {
+////            int bndIdx = 0; // for just lowest band of all directions
+////            int chIdx = i;
+//            printf("TEMP: viewing band channels of the first direction");
+//            int bndIdx = i % nBand; // cycle through the bands of the chIdx
+//            int chIdx = 8;
+//
+//            utility_svsadd(&(edcIn[bndIdx][chIdx][0]), // [bnd][ch][smp]
+//                           &add, nSamp,
+//                           &edcOut[i][0]); // [ch][smp]
+//            utility_svsmul(&edcOut[i][0],  // [ch][smp]
+//                           &scale, nSamp,
+//                           &edcOut[i][0]); // [ch][smp]
+//            utility_svssub(&edcOut[i][0],  // [ch][smp]
+//                           &sub, nSamp,
+//                           &edcOut[i][0]); // [ch][smp]
+//        }
         
 /* TESTS */
         // Write out band-filtered signals
@@ -1232,6 +1255,19 @@ void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcOut, float disp
 //                   nSamp * sizeof(float));
 //        }
 
+        // write out EDCs
+        for(int i = 0; i < pData->nDir; i++) {
+            //            int bndIdx = 0; // for just lowest band of all directions
+            //            int chIdx = i;
+            printf("TEMP: Writing out EDCs for one direction, by band.\n");
+            int bndIdx = i % nBand; // cycle through the bands of the chIdx
+            int chIdx = 8;
+            memcpy(&edcOut[i][0],             // copy-to channel
+                   &edcIn[bndIdx][chIdx][0],
+                   nSamp * sizeof(float));
+        }
+
+        
 //        // THIS WORKS: simple copy input to output
 //        for(int i = 0; i < pData->nDir; i++)
 //            memcpy(&edcOut[i][0],             // copy-to channel

@@ -242,10 +242,9 @@ void hosirrlib_processRIR(void* const hHS);
 void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB);
 void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac);
 void hosirrlib_splitBands(void* const hHS, float** const inBuf, float*** const bndBuf, int removeFiltDelayFLAG, ANALYSIS_STAGE stage);
-void hosirrlib_splitBandsTD(void* const hHS, float** const inBuf, float*** const bndBuf, int removeFiltDelayFLAG, ANALYSIS_STAGE stage);
-void hosirrlib_beamformRIR(void* const hHS);
-void hosirrlib_calcEDC(void* const hHS, float*** const inBuf, float*** const edcBuf, ANALYSIS_STAGE stage);
-void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb, const int beginIdx);
+void hosirrlib_beamformRIR(void* const hHS, float*** const inBuf, float*** const beamBuf, ANALYSIS_STAGE thisStage);
+void hosirrlib_calcEDC(void* const hHS, float*** const inBuf, float*** const edcBuf, ANALYSIS_STAGE thisStage);
+void hosirrlib_calcT60(void* const hHS, float*** const edcBuf, float** const t60Buf, const float startDb, const float spanDb, const int beginIdx);
 
 /* Helpers */
 int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thresh);

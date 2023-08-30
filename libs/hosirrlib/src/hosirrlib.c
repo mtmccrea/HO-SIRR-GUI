@@ -397,10 +397,10 @@ void hosirrlib_processRIR
     
     hosirrlib_setDirectOnsetIndex(pData, directOnsetThreshDb);
     hosirrlib_setDiffuseOnsetIndex(pData, diffuseOnsetThreshDb);
-    hosirrlib_splitBands(pData, pData->rirBuf, pData->rirBuf_bands, 1, RIR_BANDS_SPLIT);
-    hosirrlib_beamformRIR(pData);
-    hosirrlib_calcEDC(pData, pData->rirBuf_beams, pData->edcBuf_rir, RIR_EDC_DONE);
-    hosirrlib_calcT60(pData,
+    hosirrlib_splitBands(   pData, pData->rirBuf, pData->rirBuf_bands, 1, RIR_BANDS_SPLIT);
+    hosirrlib_beamformRIR(  pData, pData->rirBuf_bands, pData->rirBuf_beams, BEAMFORMED);
+    hosirrlib_calcEDC(      pData, pData->rirBuf_beams, pData->edcBuf_rir, RIR_EDC_DONE);
+    hosirrlib_calcT60(      pData, pData->edcBuf_rir, pData->t60Buf,
                       -2.f, 15.f, // startDb (<= 0), spanDb (> 0)
                       // pData->directOnsetIdx + (int)(pData->fs * directLagSec) // measure after this index
                       pData->diffuseOnsetIdx // measure from diffuseOnset
@@ -805,76 +805,6 @@ void hosirrlib_splitBands(
     pData->analysisStage = thisStage;
 }
 
-//// time-domain filtering via TD convolution
-//void hosirrlib_splitBandsTD(
-//                          void*    const hHS,
-//                          float**  const inBuf,
-//                          float*** const bndBuf,
-//                          int removeFiltDelayFLAG,
-//                          ANALYSIS_STAGE thisStage)
-//{
-//    /* removeFiltDelay = true will truncate the head and tail of the
-//     * filtered signal, instead of (only) the tail. So either way,
-//     * the written output will always be pData->nSamp for each channel. */
-//
-//    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-//    printf("splitBands called.\n");
-//
-//    /* Check previous stages are complete */
-//    if (pData->analysisStage < thisStage-1) {
-//        printf("splitBands called before previous stages were completed: %d\n", pData->analysisStage);
-//        return; // TODO: handle fail case
-//    }
-//
-//    const int nInSamp   = pData->nSamp; // TODO: todo assumes nsamp of outbuf == nsamp of RIR
-//    const int filtOrder = pData->bandFiltOrder;
-//
-//    int startCopyIdx;
-//    if (removeFiltDelayFLAG) {
-//        startCopyIdx = (int)(filtOrder / 2.f); // length of filter delay (floor)
-//    } else {
-//        startCopyIdx = 0;
-//    }
-//
-//    /* Apply filterbank to rir_bands.
-//     * Because of fftconv's indexing, it expects filter coefficients
-//     * for each channel. So we do one band/channel at a time.
-//     * The output length will be nSamp + filtOrder.
-//     * See fftconv(): y_len = x_len + h_len - 1; */
-//    float* stage = malloc1d((nInSamp + filtOrder) * sizeof(float));
-//
-//    for(int ish = 0; ish < pData->nSH; ish++) {
-//        for(int ib = 0; ib < pData->nBand; ib++) {
-//            convd(&inBuf[ish][0],             // input: 1 channel at a time
-//                  &pData->H_bandFilt[ib][0],  // band filter coeffs
-//                  nInSamp,                    // input length
-//                  filtOrder + 1,              // filter length
-//                  stage);                     // write to staging buffer
-//
-//            /* Copy staging buffer to out */
-//            memcpy((void*)&bndBuf[ib][ish][0],
-//                   &stage[startCopyIdx],
-//                   nInSamp * sizeof(float));
-//        }
-//    }
-//    pData->analysisStage = thisStage;
-//    free(stage);
-//
-//
-////    for(int ish = 0; ish < pData->nSH; ish++) {
-////        for(int ibd = 0; ibd < pData->nBand; ibd++) {
-////            fftfilt(&inBuf[ish][0],             // input: 1 channel at a time
-////                    &pData->H_bandFilt[ibd][0], // band filter coeffs
-////                    nInSamp,                    // input length
-////                    filtOrder + 1,              // filter length
-////                    1,                          // 1 channel at a time
-////                    &bndBuf[ibd][ish][0]);      // write out
-////        }
-////    }
-//
-//    pData->analysisStage = thisStage;
-//}
-
 
 // DEBUG FUNCTION
 void hosirrlib_inspectFilts(void* const hHS)
@@ -927,13 +857,16 @@ void hosirrlib_inspectFilts(void* const hHS)
     
     
 void hosirrlib_beamformRIR(
-                           void* const hHS)
+                           void*    const hHS,
+                           float*** const inBuf,
+                           float*** const beamBuf,
+                           ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("beamformRIR called.\n");
     
     /* Check previous stages are complete */
-    if (pData->analysisStage < BEAMFORMED-1){
+    if (pData->analysisStage < thisStage-1) {
         printf("beamformRIR called before previous stages were completed: %d\n", pData->analysisStage);
         return; // TODO: handle fail case
     }
@@ -975,31 +908,31 @@ void hosirrlib_beamformRIR(
                 (float*)pData->outputFrameTD, BEAMFORMER_FRAME_SIZE);       // C, 1st dim of C
      */
     
-//    /* Apply beam weights
-//     // (ref. beamformer_process())
-//     // A: float** encBeamCoeffs;  // nDir  x nSH
-//     // B: float*** rirBuf_bands;  // nBand x nSH  x nSamp
-//     // C: float*** rirBuf_beams;  // nBand x nDir x nSamp */
-//    for (int bd = 0; bd < nBand; bd++) {
-//        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-//                    nDir, nSamp, nSH, 1.0f,
-//                    (const float*)&pData->decBeamCoeffs[0][0],    nSH,   // A, 1st dim of A (row-major)
-//                    (const float*)&pData->rirBuf_bands[bd][0][0], nSamp, // B, 1st dim of B
-//                    0.0f, // beta scalar for C
-//                    (float*)&pData->rirBuf_beams[bd][0][0], nSamp);      // C, 1st dim of C
-//    }
-    
-    /* TEST: bypass beam weighting, just copy W into all "beams" */
-    for (int id = 0; id < nDir; id++) {
-        for (int bd = 0; bd < nBand; bd++) {
-            utility_svvcopy(&pData->rirBuf_bands[bd][0][0], // W
-                            nSamp,
-                            &pData->rirBuf_beams[bd][id][0]);
-        }
+    /* Apply beam weights
+     // (ref. beamformer_process())
+     // A: float** encBeamCoeffs;  // nDir  x nSH
+     // B: float*** rirBuf_bands;  // nBand x nSH  x nSamp
+     // C: float*** rirBuf_beams;  // nBand x nDir x nSamp */
+    for (int bd = 0; bd < nBand; bd++) {
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                    nDir, nSamp, nSH, 1.0f,
+                    (const float*)&pData->decBeamCoeffs[0][0],    nSH,   // A, 1st dim of A (row-major)
+                    (const float*)&pData->rirBuf_bands[bd][0][0], nSamp, // B, 1st dim of B
+                    0.0f, // beta scalar for C
+                    (float*)&beamBuf[bd][0][0], nSamp);      // C, 1st dim of C
     }
     
+//    /* TEST: bypass beam weighting, just copy W into all "beams" */
+//    for (int id = 0; id < nDir; id++) {
+//        for (int bd = 0; bd < nBand; bd++) {
+//            utility_svvcopy(&inBuf[bd][0][0], // W
+//                            nSamp,
+//                            &beamBuf[bd][id][0]);
+//        }
+//    }
     
-    pData->analysisStage = BEAMFORMED;
+    
+    pData->analysisStage = thisStage;
     free(c_l);
 }
 
@@ -1048,7 +981,14 @@ void hosirrlib_calcEDC(
 }
 
 
-void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb, const int beginIdx)
+void hosirrlib_calcT60(
+                       void* const hHS,
+                       float*** const edcBuf,
+                       float** const t60Buf,
+                       const float startDb,
+                       const float spanDb,
+                       const int beginIdx
+                       )
 { /*
    startDb  : measure the T60 starting at this level of decay
               (after beginIdx), specify as negative (<= 0)
@@ -1071,7 +1011,6 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
     const int   nBand = pData->nBand;
     const int   nSH   = pData->nSH;
     const float fs    = pData->fs;
-    float ***edc      = pData->edcBuf_rir; // TODO: this will become an arg when/if FDN needs to be measured
     
     float* const x_slope1    = malloc1d(nSamp * sizeof(float)); // vector with slope of 1/samp
     float* const y_edc0m     = malloc1d(nSamp * sizeof(float)); // zero-mean EDC
@@ -1081,11 +1020,12 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
     /* find the start and end points of the measurement */
     for (int bd = 0; bd < nBand; bd++) {
         for (int ch = 0; ch < nChan; ch++) {
-            float edcMax = edc[bd][ch][beginIdx];
+            float edcMax = edcBuf[bd][ch][beginIdx];
             printf("edcMax: %.4f\n", edcMax);
             
-            int start_t60 = hosirrlib_firstIndexLessThan(&edc[bd][ch][0],
-                                                         beginIdx, nSamp - 1,
+            int start_t60 = hosirrlib_firstIndexLessThan(&edcBuf[bd][ch][0],
+                                                         beginIdx,
+                                                         nSamp - 1,
                                                          edcMax + startDb); // startDb is negative
             if (start_t60 < 0) {
                 // no value found below the start level // TODO: warn or error
@@ -1095,8 +1035,9 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
             }
             //printf("start idx: %d\n", st_end_meas[bd][ch][0]);
             
-            int end_t60 = hosirrlib_firstIndexLessThan(&edc[bd][ch][0],
-                                                       start_t60, nSamp - 1,
+            int end_t60 = hosirrlib_firstIndexLessThan(&edcBuf[bd][ch][0],
+                                                       start_t60,
+                                                       nSamp - 1,
                                                        edcMax + startDb - spanDb); // startDb is negative, spanDb is positive
             if (end_t60 < 0) {
                 // no value found below startDb - spanDb // TODO: warn or error
@@ -1125,7 +1066,7 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
             int end_meas   = st_end_meas[ibnd][idir][1];
             int nSamp_meas = end_meas - st_meas + 1;
             
-            float y_mean = sumf(&edc[ibnd][idir][st_meas], nSamp_meas) / nSamp_meas;
+            float y_mean = sumf(&edcBuf[ibnd][idir][st_meas], nSamp_meas) / nSamp_meas;
             
             /* Construct a vector with a slope of 1:samp with zero mean */
             float first_val = (nSamp_meas - 1) / -2.f; // first value
@@ -1133,7 +1074,7 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
                 x_slope1[i] = first_val + i;
             };
             // remove mean from EDC, within the measurement span
-            utility_svssub(&edc[ibnd][idir][st_meas], &y_mean, nSamp_meas, y_edc0m);
+            utility_svssub(&edcBuf[ibnd][idir][st_meas], &y_mean, nSamp_meas, y_edc0m);
             // covariance: x*y and x*x
             utility_svvmul(x_slope1, y_edc0m, nSamp_meas, stage);
             float c_xy = sumf(stage, nSamp_meas);
@@ -1143,13 +1084,13 @@ void hosirrlib_calcT60(void* const hHS, const float startDb, const float spanDb,
             float dbPerSamp = c_xy / c_xx;
             //printf("dbPerSamp: %.7f\n", dbPerSamp);
             // write out
-            pData->t60Buf[ibnd][idir] = (-60.0f / dbPerSamp) / fs;
+            t60Buf[ibnd][idir] = (-60.0f / dbPerSamp) / fs;
         }
     }
     // debug
     for (int idir = 0; idir < nChan; idir++)
         for (int ibnd = 0; ibnd < nBand; ibnd++)
-            printf("t60: dir %d band %d  %.2f sec\n", idir, ibnd, pData->t60Buf[ibnd][idir]);
+            printf("t60: dir %d band %d  %.2f sec\n", idir, ibnd, t60Buf[ibnd][idir]);
         
     free(x_slope1);
     free(y_edc0m);
@@ -1205,12 +1146,15 @@ void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcOut, float disp
         // temp - see which channel the max value was found on
         int maxBndIdx = 0;
         int maxDirIdx = 0;
-        for(int ib = 0; ib < nBand; ib++) {
-            for(int id = 0; id < nDir; id++) {
+        for(int id = 0; id < nDir; id++) {
+            for(int ib = 0; ib < nBand; ib++) {
                 float val0 = edcIn[ib][id][0];
                 printf("\tchan val dir %d, bnd %d: %.2f\n", id, ib, val0);
-                if (val0 > maxVal)
-                    maxVal = edcIn[ib][id][0]; maxBndIdx = ib; maxDirIdx = id;
+                if (val0 > maxVal) {
+                    maxVal = edcIn[ib][id][0];
+                    maxBndIdx = ib;
+                    maxDirIdx = id;
+                }
             }
         }
         printf(">>> max val found on dir %d, bnd %d: %.2f\n\n", maxDirIdx, maxBndIdx, maxVal);
@@ -1229,46 +1173,54 @@ void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcOut, float disp
         //printf("max %.1f, min %.1f, rng %.1f, add %.1f, scl %.1f, sub %.1f, ",
         //       maxVal, minVal, range, add, scale, sub);
         
-//        for(int i = 0; i < nDir; i++) {
-////            int bndIdx = 0; // for just lowest band of all directions
-////            int chIdx = i;
-//            printf("TEMP: viewing band channels of the first direction");
-//            int bndIdx = i % nBand; // cycle through the bands of the chIdx
-//            int chIdx = 8;
-//
-//            utility_svsadd(&(edcIn[bndIdx][chIdx][0]), // [bnd][ch][smp]
-//                           &add, nSamp,
-//                           &edcOut[i][0]); // [ch][smp]
-//            utility_svsmul(&edcOut[i][0],  // [ch][smp]
-//                           &scale, nSamp,
-//                           &edcOut[i][0]); // [ch][smp]
-//            utility_svssub(&edcOut[i][0],  // [ch][smp]
-//                           &sub, nSamp,
-//                           &edcOut[i][0]); // [ch][smp]
-//        }
+        for(int i = 0; i < nDir; i++) {
+//            int bndIdx = 0; // for just lowest band of all directions
+//            int chIdx = i;
+            printf("TEMP: viewing band channels of the first direction");
+            int bndIdx = i % nBand; // cycle through the bands of the chIdx
+            int chIdx = 8;
+
+            utility_svsadd(&(edcIn[bndIdx][chIdx][0]), // [bnd][ch][smp]
+                           &add, nSamp,
+                           &edcOut[i][0]); // [ch][smp]
+            utility_svsmul(&edcOut[i][0],  // [ch][smp]
+                           &scale, nSamp,
+                           &edcOut[i][0]); // [ch][smp]
+            utility_svssub(&edcOut[i][0],  // [ch][smp]
+                           &sub, nSamp,
+                           &edcOut[i][0]); // [ch][smp]
+        }
         
 /* TESTS */
-        // Write out band-filtered signals
+        
+//        // Write out band-filtered signals
 //        for(int i = 0; i < pData->nDir; i++) {
 //            memcpy(&edcOut[i][0],                    // copy-to channel
-//                   &(pData->rirBuf_bands[i%nBand][3][0]), // [bnd][ch][smp]
+//                   &(pData->rirBuf_bands[i%nBand][0][0]), // [bnd][ch][smp]
 //                   nSamp * sizeof(float));
 //        }
 
-        // write out EDCs
-        for(int i = 0; i < pData->nDir; i++) {
-            //            int bndIdx = 0; // for just lowest band of all directions
-            //            int chIdx = i;
-            printf("TEMP: Writing out EDCs for one direction, by band.\n");
-            int bndIdx = i % nBand; // cycle through the bands of the chIdx
-            int chIdx = 8;
-            memcpy(&edcOut[i][0],             // copy-to channel
-                   &edcIn[bndIdx][chIdx][0],
-                   nSamp * sizeof(float));
-        }
+//        // write out EDCs
+//        for(int i = 0; i < pData->nDir; i++) {
+//            //            int bndIdx = 0; // for just lowest band of all directions
+//            //            int chIdx = i;
+//            printf("TEMP: Writing out EDCs for one direction, by band.\n");
+//            int bndIdx = i % nBand; // cycle through the bands of the chIdx
+//            int chIdx = 0;
+//            memcpy(&edcOut[i][0],             // copy-to channel
+//                   &edcIn[bndIdx][chIdx][0],
+//                   nSamp * sizeof(float));
+//        }
 
+        // write filter coeffs out directly
+        for(int id = 0; id < pData->nDir; id++) {
+            memcpy(&edcOut[id][0], // write out
+                   &pData->H_bandFilt[id % pData->nBand][0],    // band filter coeffs
+                   (pData->bandFiltOrder + 1) * sizeof(float)   // filter length
+                   );
+        }
         
-//        // THIS WORKS: simple copy input to output
+//        // simple copy input to output
 //        for(int i = 0; i < pData->nDir; i++)
 //            memcpy(&edcOut[i][0],             // copy-to channel
 //                   &(pData->rirBuf[i][0]),    // [nsh][smp]
@@ -1291,14 +1243,6 @@ void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcOut, float disp
 //                    pData->bandFiltOrder + 1,              // filter length
 //                    1,                          // 1 channel at a time
 //                    &edcOut[id][0]);       // write out
-//        }
-
-//        // write filter coeffs out directly
-//        for(int id = 0; id < pData->nDir; id++) {
-//            memcpy(&edcOut[id][0], // write out
-//                   &pData->H_bandFilt[id % pData->nBand][0],    // band filter coeffs
-//                   (pData->bandFiltOrder + 1) * sizeof(float)   // filter length
-//                   );
 //        }
         
     } else {

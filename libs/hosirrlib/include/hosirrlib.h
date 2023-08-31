@@ -256,8 +256,8 @@ void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcCopy, float dis
 /* Getters */
 int hosirrlib_getNumDirections(void* const hHS);
 
-// DEBUGGER FUNC
-void hosirrlib_inspectFilts(void* const hHS);
+// DEBUG FUNC
+//void hosirrlib_inspectFilts(void* const hHS);
 
 /**
  * Sets a flag, as to whether the renderer should isolate the first peak in the

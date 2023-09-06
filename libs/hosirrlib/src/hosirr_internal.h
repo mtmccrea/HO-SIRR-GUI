@@ -109,8 +109,10 @@ typedef struct _hosirrlib
     float*** edcBuf_fdn;    // nBand x nDir x nSamp
     float**  fdnBuf_shd;    // nSH x nSamp (output RIR)
     
-    float**  H_bandFilt;    // nBand x bandFiltOrder + 1
-    float*   bandXOverFreqs; // 1 x nBand-1
+    float**  H_bandFilt;      // nBand x bandFiltOrder + 1
+    float*   bandCenterFreqs; // size should match nBand.
+    float*   bandXOverFreqs;  // 1 x nBand-1
+    
     
     int nSH, nSamp, shOrder; // input vars
     float fs;

@@ -75,7 +75,7 @@ typedef enum {
     FILTERS_INTITIALIZED,   /**< Filterbank is initialized */
     ANALYSIS_BUFS_LOADED,   /**< Staging buffers for intermediate processing are loaded */
     DIRECT_ONSET_FOUND,     /**< First arrival  position is found */
-    DIFFUSENESS_ONSET_FOUND, /**< T60s are calculated for each beam/band */
+    DIFFUSENESS_ONSET_FOUND,/**< T60s are calculated for each beam/band */
     RIR_BANDS_SPLIT,        /**< RIR is split into bands */
     BEAMFORMED,             /**< SHD signal has been beamformed into directional signals (by band)  */
     RIR_EDC_DONE,           /**< EDCs are calculated for each beam/band */

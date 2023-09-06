@@ -76,13 +76,11 @@ void hosirrlib_create(
     pData->fdnBuf_shd    = NULL;    // nSH x nSamp
     
     pData->H_bandFilt    = NULL;    // nBand x filtOrder+1
+    pData->bandCenterFreqs = NULL;
     pData->bandXOverFreqs = NULL;
     
-    /* Konstants */
-    /* Initialize octave band filters */
-    pData->nBand = 8;
-    pData->bandFiltOrder = 400;
-    
+    /* Constants */
+    // Note: filterbank constants set in
     // if diffuseness never crosses this threshold, diffuse onset defaults to direct onset +10ms
     pData->diffuseMin = 0.3f;
     // don't initialize filters yet... input RIR is required for getting the fs
@@ -156,6 +154,7 @@ void hosirrlib_destroy(
         free(pData->fdnBuf_shd);
         // unchanging after init
         free(pData->H_bandFilt);
+        free(pData->bandCenterFreqs);
         free(pData->bandXOverFreqs);
         
         /* original hosirrlib */
@@ -273,23 +272,32 @@ void hosirrlib_initBandFilters(
         return;
     }
     
-    // if this is the first time this function is called...
-    if (pData->H_bandFilt == NULL) {
-        
-        pData->bandXOverFreqs = malloc1d((pData->nBand-1) * sizeof(float));
-        
-        // bandFreqs are "center freqs" used to determine crossover freqs.
-        // The lowest and highest bands are LP and HP filters,
-        // so 125 Hz "center freq" of the LPF becomes a crossover of 125 * sqrt(2) = 177 Hz.
-        // And the HPF cut-on is 8k * sqrt(2) = 11313 Hz.
-        // Must be size pData->nBand-1.
-        float bandFreqs[7] = {125.f, 250.f, 500.f, 1000.f, 2000.f, 4000.f, 8000.f};
-        
-        // The xover freqs are the half-octave step above of the center freqs.
-        for (int i=0; i < pData->nBand-1; i++) {
-            pData->bandXOverFreqs[i] = bandFreqs[i] * sqrtf(2.0f);
-            printf("band %d xover %.4f\n", i, pData->bandXOverFreqs[i]);
-        }
+    /* Initialize octave band filters */
+    // bandCenterFreqs are "center freqs" used to determine crossover freqs.
+    // The lowest and highest bands are LP and HP filters, "center freq" for
+    // those is a bit of a misnomer. Xover freqs are center freqs * sqrt(2)
+    // (octave bands), see hosirrlib_initBandFilters().
+    // LPF cutoff is 125 * sqrt(2) = 177 Hz.
+    // HPF cuton is 8k * sqrt(2) = 11313 Hz.
+    // Must be the same size as pData->nBand.
+    pData->nBand = 8;
+    float bandCenterFreqs[8] = {125.f, 250.f, 500.f, 1000.f, 2000.f, 4000.f, 8000.f, 16000.f};
+    pData->bandFiltOrder = 400;
+    
+    pData->bandCenterFreqs = malloc1d(pData->nBand     * sizeof(float));
+    pData->bandXOverFreqs  = malloc1d((pData->nBand-1) * sizeof(float));
+    
+    // populate the bandCenterFreqs member var for external access
+    utility_svvcopy(&bandCenterFreqs[0], pData->nBand, pData->bandCenterFreqs);
+    
+    // set xover freqs
+    for (int ib = 0; ib < pData->nBand-1; ib++) {
+        pData->bandXOverFreqs[ib] = bandCenterFreqs[ib] * sqrtf(2.f);
+        printf("band %d xover %.4f\n", ib, pData->bandXOverFreqs[ib]);
+    }
+    
+    /* Create the filterbank */
+    if (pData->H_bandFilt == NULL) { // if this is the first time this function is called...
         
         // Allocate filter coefficients (nBand x bandFiltOrder + 1)
         pData->H_bandFilt = (float**)realloc2d((void**)pData->H_bandFilt,

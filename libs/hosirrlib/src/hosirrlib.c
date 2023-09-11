@@ -288,7 +288,7 @@ void hosirrlib_initBandFilters(
     pData->bandXOverFreqs  = malloc1d((pData->nBand-1) * sizeof(float));
     
     // populate the bandCenterFreqs member var for external access
-    utility_svvcopy(&bandCenterFreqs[0], pData->nBand, pData->bandCenterFreqs);
+    utility_svvcopy(bandCenterFreqs, pData->nBand, pData->bandCenterFreqs);
     
     // set xover freqs
     for (int ib = 0; ib < pData->nBand-1; ib++) {

@@ -60,6 +60,9 @@ extern "C" {
 /*                             Presets + Constants                            */
 /* ========================================================================== */
 
+
+#ifndef __COMMON_H_INCLUDED__ // avoid conflict with saf if included in same project
+
 /** Available static beamforming approaches */
 typedef enum {
     STATIC_BEAM_TYPE_CARDIOID = 1,  /**< cardioid */
@@ -68,44 +71,10 @@ typedef enum {
 
 } STATIC_BEAM_TYPES;
 
-/** SRIR analysis stages */
-typedef enum {
-    RIR_NOT_LOADED = 1,     /**< No RIR is set/loaded */
-    RIR_LOADED,             /**< RIR is read into member buffer */
-    FILTERS_INTITIALIZED,   /**< Filterbank is initialized */
-    ANALYSIS_BUFS_LOADED,   /**< Staging buffers for intermediate processing are loaded */
-    DIRECT_ONSET_FOUND,     /**< First arrival  position is found */
-    DIFFUSENESS_ONSET_FOUND,/**< T60s are calculated for each beam/band */
-    RIR_BANDS_SPLIT,        /**< RIR is split into bands */
-    BEAMFORMED,             /**< SHD signal has been beamformed into directional signals (by band)  */
-    RIR_EDC_DONE,           /**< EDCs are calculated for each beam/band */
-    T60_DONE,               /**< T60s are calculated for each beam/band */
-    RIR_PROCESSED,          /**< RIR has been fully processed and ready for FDN synthesis */
-    FDN_BANDS_SPLIT,        /**< FDN is split into bands */
-    FDN_EDC_DONE,           /**< EDCs are calculated for each beam/band of the FDN channels */
-    DIRGAIN_DONE            /**< Directional gain has been calculated between FDN and RIR channels/bands */
-} ANALYSIS_STAGE;
-
-
-/**
- * Available analysis/rendering order options
- */
-#define HOSIRR_MAX_SH_ORDER ( 7 )
-typedef enum _ANALYSIS_ORDERS{
-    ANALYSIS_ORDER_FIRST = 1, /**< 1st-order rendering (4 channel input) */
-    ANALYSIS_ORDER_SECOND,    /**< 2nd-order rendering (9 channel input) */
-    ANALYSIS_ORDER_THIRD,     /**< 3rd-order rendering (16 channel input) */
-    ANALYSIS_ORDER_FOURTH,    /**< 4th-order rendering (25 channel input) */
-    ANALYSIS_ORDER_FIFTH,     /**< 5th-order rendering (36 channel input) */
-    ANALYSIS_ORDER_SIXTH,     /**< 6th-order rendering (49 channel input) */
-    ANALYSIS_ORDER_SEVENTH    /**< 7th-order rendering (64 channel input) */
-    
-}ANALYSIS_ORDERS;
-
 /**
  * Available loudspeaker array presets
  */
-typedef enum _LOUDSPEAKER_ARRAY_PRESETS{
+typedef enum _LOUDSPEAKER_ARRAY_PRESETS {
     LOUDSPEAKER_ARRAY_PRESET_DEFAULT = 1,
     LOUDSPEAKER_ARRAY_PRESET_15PX,
     LOUDSPEAKER_ARRAY_PRESET_16PX,
@@ -162,28 +131,63 @@ typedef enum _NORM_TYPES {
 
 /** Number of normalisation options */
 #define HOSIRR_NUM_NORM_TYPES ( 3 )
+
+/**
+ * Available analysis/rendering order options
+ */
+#define HOSIRR_MAX_SH_ORDER ( 7 )
+typedef enum _ANALYSIS_ORDERS {
+    ANALYSIS_ORDER_FIRST = 1, /**< 1st-order rendering (4 channel input) */
+    ANALYSIS_ORDER_SECOND,    /**< 2nd-order rendering (9 channel input) */
+    ANALYSIS_ORDER_THIRD,     /**< 3rd-order rendering (16 channel input) */
+    ANALYSIS_ORDER_FOURTH,    /**< 4th-order rendering (25 channel input) */
+    ANALYSIS_ORDER_FIFTH,     /**< 5th-order rendering (36 channel input) */
+    ANALYSIS_ORDER_SIXTH,     /**< 6th-order rendering (49 channel input) */
+    ANALYSIS_ORDER_SEVENTH    /**< 7th-order rendering (64 channel input) */
+    
+} ANALYSIS_ORDERS;
+
+#endif // __COMMON_H_INCLUDED__
+
+/** SRIR analysis stages */
+typedef enum {
+    RIR_NOT_LOADED = 1,     /**< No RIR is set/loaded */
+    RIR_LOADED,             /**< RIR is read into member buffer */
+    FILTERS_INTITIALIZED,   /**< Filterbank is initialized */
+    ANALYSIS_BUFS_LOADED,   /**< Staging buffers for intermediate processing are loaded */
+    DIRECT_ONSET_FOUND,     /**< First arrival  position is found */
+    DIFFUSENESS_ONSET_FOUND,/**< T60s are calculated for each beam/band */
+    RIR_BANDS_SPLIT,        /**< RIR is split into bands */
+    BEAMFORMED,             /**< SHD signal has been beamformed into directional signals (by band)  */
+    RIR_EDC_DONE,           /**< EDCs are calculated for each beam/band */
+    T60_DONE,               /**< T60s are calculated for each beam/band */
+    RIR_PROCESSED,          /**< RIR has been fully processed and ready for FDN synthesis */
+    FDN_BANDS_SPLIT,        /**< FDN is split into bands */
+    FDN_EDC_DONE,           /**< EDCs are calculated for each beam/band of the FDN channels */
+    DIRGAIN_DONE            /**< Directional gain has been calculated between FDN and RIR channels/bands */
+} ANALYSIS_STAGE;
     
 /**
  * Status of the ambisonic RIR
  */
-typedef enum _AMBI_RIR_STATUS{
+typedef enum _AMBI_RIR_STATUS {
     AMBI_RIR_STATUS_LOADED = 0,    /**< An Ambisonic RIR has been loaded */
     AMBI_RIR_STATUS_NOT_LOADED,    /**< An Ambisonic RIR has NOT been loaded */
     AMBI_RIR_STATUS_INVALID_FORMAT /**< A file that does not have (N+1)^2
                                     *   channels was loaded, and will not be
                                     *   used for rendering */
-}AMBI_RIR_STATUS;
+} AMBI_RIR_STATUS;
     
 /**
  * Statis of the loudspeaker RIR
  */
-typedef enum _LS_RIR_STATUS{
+typedef enum _LS_RIR_STATUS {
     LS_RIR_STATUS_RENDERED = 0,        /**< Loudspeaker RIR has been rendered */
     LS_RIR_STATUS_RENDEREDING_ONGOING, /**< Loudspeaker RIR is currently being
                                         *   rendered */
     LS_RIR_STATUS_NOT_RENDERED         /**< Loudspeaker RIR has not yet been
                                         *   rendered */
-}LS_RIR_STATUS;
+} LS_RIR_STATUS;
 
 #define HOSIRR_MAX_NUM_OUTPUTS ( 64 )
 #define HOSIRR_PROGRESSTEXT_CHAR_LENGTH ( 256 )

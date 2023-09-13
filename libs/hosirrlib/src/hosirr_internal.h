@@ -55,7 +55,11 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+
+#ifndef __HOSIRRLIB_H_INCLUDED__ // mtm yuk
 #include "hosirrlib.h"
+#endif
+
 #include "saf.h"
 #include "saf_externals.h" /* to also include saf dependencies (cblas etc.) */
 

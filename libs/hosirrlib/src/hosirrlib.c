@@ -75,31 +75,32 @@ void hosirrlib_create(
     pData->edcBuf_fdn    = NULL;    // nDir x nBand x nSamp
     pData->fdnBuf_shd    = NULL;    // nSH x nSamp
     
-    pData->H_bandFilt    = NULL;    // nBand x filtOrder+1
+    pData->H_bandFilt      = NULL;  // nBand x filtOrder+1
     pData->bandCenterFreqs = NULL;
-    pData->bandXOverFreqs = NULL;
+    pData->bandXOverFreqs  = NULL;
     
     /* Constants */
-    // Note: filterbank constants set in
-    // if diffuseness never crosses this threshold, diffuse onset defaults to direct onset +10ms
+    
+    /* If diffuseness never crosses this threshold, diffuse onset
+     * defaults to direct onset +5ms. */
     pData->diffuseMin = 0.3f;
-    // don't initialize filters yet... input RIR is required for getting the fs
     
-    /* Initialize spherical desing for directional analysis */
-    pData->beamType = STATIC_BEAM_TYPE_HYPERCARDIOID;
-    
+    /* Note: Don't initialize filters yet... input RIR is required for getting
+     * the fsfilterbank constants set in _initBandFilters(). */
     
     /* zero out the state of buffer resources */
     hosirrlib_setUninitialized(pData);
     
-    /* Initialize spherical desing for directional analysis */
+    /* Beam shape for decomposition */
+    pData->beamType = STATIC_BEAM_TYPE_HYPERCARDIOID;
+    /* Initialize spherical design for directional analysis */
     loadLoudspeakerArrayPreset( // default design currently just set by enum LOUDSPEAKER_ARRAY_PRESET_15PX
                                LOUDSPEAKER_ARRAY_PRESET_15PX,
                                pData->loudpkrs_dirs_deg,
                                &(pData->nLoudpkrs));
     pData->nDir = pData->nLoudpkrs;
     
-    
+    /* ~~~~~~~~~~~~~~~~~~ */
     /* original hosirrlib */
     
     pData->progress0_1 = 0.0f;
@@ -416,15 +417,15 @@ void hosirrlib_processRIR(
     const float directLagSec = 0.005f; // sec
     // direct arrival onset threashold (dB below omni peak)
     const float directOnsetThreshDb = -6.f;
-    // diffuse onset threashold (factor below diffuseness peak)
-    const float diffuseOnsetThreshDb = 0.707f;
+    // diffuse onset threashold (normalized scalar below diffuseness peak)
+    const float diffuseOnsetThresh = 0.707f;
     
     hosirrlib_setDirectOnsetIndex(pData, directOnsetThreshDb);
-    hosirrlib_setDiffuseOnsetIndex(pData, diffuseOnsetThreshDb);
-    hosirrlib_splitBands(   pData, pData->rirBuf, pData->rirBuf_bands, 1, RIR_BANDS_SPLIT);
+    hosirrlib_setDiffuseOnsetIndex(pData, diffuseOnsetThresh);
+    hosirrlib_splitBands(   pData, pData->rirBuf,       pData->rirBuf_bands, 1, RIR_BANDS_SPLIT);
     hosirrlib_beamformRIR(  pData, pData->rirBuf_bands, pData->rirBuf_beams, BEAMFORMED);
-    hosirrlib_calcEDC(      pData, pData->rirBuf_beams, pData->edcBuf_rir, RIR_EDC_DONE);
-    hosirrlib_calcT60(      pData, pData->edcBuf_rir, pData->t60Buf,
+    hosirrlib_calcEDC(      pData, pData->rirBuf_beams, pData->edcBuf_rir,   RIR_EDC_DONE);
+    hosirrlib_calcT60(      pData, pData->edcBuf_rir,   pData->t60Buf,
                       -2.f, 15.f, // startDb (<= 0), spanDb (> 0) // TODO: SET CONSTANTS ELSEWHERE
                       // pData->directOnsetIdx + (int)(pData->fs * directLagSec) // measure after this index
                       pData->diffuseOnsetIdx // measure from diffuseOnset
@@ -493,7 +494,7 @@ void hosirrlib_setDiffuseOnsetIndex(
                                     const float thresh_fac
                                     )
 { /*
-   * thresh_fac: threshold (energy, dB) below the absolute max value in the
+   * thresh_fac: threshold (normalized scalar) below the absolute max value in the
    *            buffer, above which the onset is considered to have occured.
    */
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);

@@ -130,15 +130,15 @@ const String PluginProcessor::getParameterText(int index)
             case k_analysisOrder: return String(hosirrlib_getAnalysisOrder(hHS));
             case k_channelOrder:
                 switch(hosirrlib_getChOrder(hHS)){
-                    case CH_ACN:  return "ACN";
-                    case CH_FUMA: return "FuMa";
+                    case ACN_ORDER:  return "ACN";
+                    case FUMA_ORDER: return "FuMa";
                     default: return "NULL";
                 }
             case k_normType:
                 switch(hosirrlib_getNormType(hHS)){
-                    case NORM_N3D:  return "N3D";
-                    case NORM_SN3D: return "SN3D";
-                    case NORM_FUMA: return "FuMa";
+                    case N3D_NORM:  return "N3D";
+                    case SN3D_NORM: return "SN3D";
+                    case FUMA_NORM: return "FuMa";
                     default: return "NULL";
                 }
                 

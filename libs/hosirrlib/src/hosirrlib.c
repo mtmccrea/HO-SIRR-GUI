@@ -49,6 +49,7 @@
  * @date 04.01.2020
  */
 
+//#include "../src/hosirr_internal.h"
 #include "hosirr_internal.h"
 
 void hosirrlib_create(
@@ -92,10 +93,17 @@ void hosirrlib_create(
     hosirrlib_setUninitialized(pData);
     
     /* Beam shape for decomposition */
-    pData->beamType = STATIC_BEAM_TYPE_HYPERCARDIOID;
+    pData->beamType = HYPERCARDIOID_BEAM;
     /* Initialize spherical design for directional analysis */
-    loadLoudspeakerArrayPreset( // default design currently just set by enum LOUDSPEAKER_ARRAY_PRESET_15PX
-                               LOUDSPEAKER_ARRAY_PRESET_15PX,
+//    loadLoudspeakerArrayPreset( // default design currently just set by enum LS_ARRAY_PRESET_15PX
+//                               LS_ARRAY_PRESET_15PX,
+//                               pData->loudpkrs_dirs_deg,
+//                               &(pData->nLoudpkrs));
+    
+    /* Initialize spherical design for directional analysis */
+    // TODO: SPHDESIGNs coincide with LS arrays for now, not a clean separation
+    loadSphDesignPreset( // default design currently just set by enum SPHDESIGN_ARRAY_PRESET_15PX
+                               SPHDESIGN_PRESET_15PX,
                                pData->loudpkrs_dirs_deg,
                                &(pData->nLoudpkrs));
     pData->nDir = pData->nLoudpkrs;
@@ -120,9 +128,9 @@ void hosirrlib_create(
     
     /* default user parameters */
     pData->analysisOrder = 1;
-    //loadLoudspeakerArrayPreset(LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_24, pData->loudpkrs_dirs_deg, &(pData->nLoudpkrs));
-    pData->chOrdering = CH_ACN;
-    pData->norm = NORM_SN3D;
+    //loadLoudspeakerArrayPreset(LS_ARRAY_PRESET_T_DESIGN_24, pData->loudpkrs_dirs_deg, &(pData->nLoudpkrs));
+    pData->chOrdering = ACN_ORDER;
+    pData->norm = SN3D_NORM;
     pData->broadBandFirstPeakFLAG = 1;
     pData->windowLength = DEFAULT_WINDOW_LENGTH;
     pData->wetDryBalance = 1.0f;
@@ -199,7 +207,7 @@ int hosirrlib_setRIR(
     /* new vars */
     pData->nSH      = numChannels;
     pData->nSamp    = numSamples;
-    pData->shOrder  = SAF_MIN(sqrt(numChannels-1), MAX_SH_ORDER);
+    pData->shOrder  = HOSIRR_MIN(sqrt(numChannels-1), HOSIRR_MAX_SH_ORDER);
     pData->fs       = (float)sampleRate;
     pData->duration = numSamples / (float)sampleRate;
     
@@ -218,7 +226,7 @@ int hosirrlib_setRIR(
     hosirrlib_allocProcBufs(pData);
     
     /* old vars */
-    pData->ambiRIRorder = SAF_MIN(sqrt(numChannels-1), MAX_SH_ORDER);
+    pData->ambiRIRorder = HOSIRR_MIN(sqrt(numChannels-1), HOSIRR_MAX_SH_ORDER);
     pData->analysisOrder = pData->ambiRIRorder;
     pData->ambiRIRlength_samples = numSamples;
     pData->ambiRIRsampleRate = sampleRate;
@@ -726,7 +734,7 @@ void hosirrlib_setDiffuseOnsetIndex(
     
     if (maxVal < pData->diffuseMin) {
         // TODO: better handling of diffuseness fail
-        saf_print_warning("Diffuseness didn't exceed the valid threshold.\nFalling back on directOnset +5ms.");
+        hosirr_print_warning("Diffuseness didn't exceed the valid threshold.\nFalling back on directOnset +5ms.");
         printf("diffuseness: %.2f < %.2f\n", maxVal, pData->diffuseMin);
         diffuseOnsetIdx = pData->directOnsetIdx + (int)(0.005 * fs);
     }
@@ -747,10 +755,10 @@ void hosirrlib_setDiffuseOnsetIndex(
     // check that time events are properly increasing
     if ((pData->t0Idx > pData->directOnsetIdx) ||
         (pData->directOnsetIdx > pData->diffuseOnsetIdx))
-        saf_print_error("Order of analyzed events isn't valid. Should be t0Idx < directOnsetIdx < diffuseOnsetIdx.");
+        hosirr_print_error("Order of analyzed events isn't valid. Should be t0Idx < directOnsetIdx < diffuseOnsetIdx.");
     // check that diffuse onset (from t0) is positive
     if (pData->diffuseOnsetSec <= 0)
-        saf_print_error("Diffuse onset is negative");
+        hosirr_print_error("Diffuse onset is negative");
     
     pData->analysisStage = DIFFUSENESS_ONSET_FOUND;
 
@@ -855,11 +863,11 @@ void hosirrlib_beamformRIR(
     //        or the spherical design (output) changes, so could be refactored
     for (int idir = 0; idir < nDir; idir++) {
         switch(pData->beamType){
-            case STATIC_BEAM_TYPE_CARDIOID:
+            case CARDIOID_BEAM:
                 beamWeightsCardioid2Spherical(shOrder, c_l); break;
-            case STATIC_BEAM_TYPE_HYPERCARDIOID:
+            case HYPERCARDIOID_BEAM:
                 beamWeightsHypercardioid2Spherical(shOrder, c_l); break;
-            case STATIC_BEAM_TYPE_MAX_EV:
+            case MAX_EV_BEAM:
                 beamWeightsMaxEV(shOrder, c_l); break;
         }
         rotateAxisCoeffsReal(shOrder,
@@ -1218,7 +1226,7 @@ void hosirrlib_copyNormalizedEDCBufs(
 //        }
         
     } else {
-        saf_print_error("copyNormalizedEDCBufs: EDC hasn't been rendered so can't copy it out.")
+        hosirr_print_error("copyNormalizedEDCBufs: EDC hasn't been rendered so can't copy it out.");
     }
 }
 
@@ -1322,7 +1330,7 @@ void hosirrlib_render
     int N_gtable, N_tri, aziRes, elevRes, N_azi, aziIndex, elevIndex, idx3d;
     int numSec, order_sec, nSH_sec, delay, frameCount;
     int fftsize, hopsize, nBins_anl, nBins_syn, maxDiffFreq_idx, rir_len;
-    int o[MAX_SH_ORDER+2];
+    int o[HOSIRR_MAX_SH_ORDER+2];
     int idx, jl, lSig, lSig_pad;
     float fs, wetDry, peakNorm, normSec, nearestVal, tmp, a2eNorm;
     float intensity[3], ixyz_smoothed[3], energy, energy_smoothed, normSecIntensity_smoothed;
@@ -1342,8 +1350,8 @@ void hosirrlib_render
     float_complex pvCOV[4][4];
     const float_complex calpha = cmplxf(1.0f, 0.0f), cbeta = cmplxf(0.0f, 0.0f);
     void* hFFT_syn, *hFFT_anl;
-    NORM_TYPES norm;
-    CH_ORDER chOrdering;
+    NORMALIZATION_TYPES norm;
+    CH_ORDERING chOrdering;
     
     /* Check if processing should actually go-ahead */
     if(pData->ambiRIR_status != AMBI_RIR_STATUS_LOADED ||
@@ -1355,7 +1363,7 @@ void hosirrlib_render
     
     /* take a local copy of current configuration to be thread safe */
     fs = pData->ambiRIRsampleRate;
-    order = SAF_MIN(pData->analysisOrder, pData->ambiRIRorder);
+    order = HOSIRR_MIN(pData->analysisOrder, pData->ambiRIRorder);
     nSH = (order+1)*(order+1);
     winsize = pData->windowLength;
     lSig = pData->ambiRIRlength_samples;
@@ -1368,11 +1376,11 @@ void hosirrlib_render
     /* make local copy of current Ambi RIR */
     shir = malloc1d(nSH * lSig * sizeof(float));
     switch(chOrdering){
-        case CH_ACN:
+        case ACN_ORDER:
 //            memcpy(shir, pData->shir, nSH * lSig * sizeof(float));
             memcpy(shir, FLATTEN2D(pData->shir), nSH * lSig * sizeof(float));
             break;
-        case CH_FUMA:
+        case FUMA_ORDER:
             /* only for first-order, convert to ACN */
             assert(nSH==4);
             memcpy(&shir[0],      &(pData->shir[0][0]), lSig * sizeof(float));
@@ -1387,12 +1395,12 @@ void hosirrlib_render
     }
     
     /* account for input normalisation scheme */
-    for(n=0; n<MAX_SH_ORDER+2; n++){  o[n] = n*n;  }
+    for(n=0; n<HOSIRR_MAX_SH_ORDER+2; n++){  o[n] = n*n;  }
     switch(norm){
-        case NORM_N3D:  /* already in N3D, do nothing */
+        case N3D_NORM:  /* already in N3D, do nothing */
             break;
-        case NORM_FUMA: /* (same as converting SN3D->N3D for first-order) */
-        case NORM_SN3D: /* convert to N3D */
+        case FUMA_NORM: /* (same as converting SN3D->N3D for first-order) */
+        case SN3D_NORM: /* convert to N3D */
             for (n = 0; n<order+1; n++)
                 for (ch = o[n]; ch<o[n+1]; ch++)
                     for(i = 0; i<lSig; i++)
@@ -1818,7 +1826,7 @@ int hosirrlib_setAmbiRIR
     }
     
     /* if it is, store RIR data */
-    pData->ambiRIRorder = SAF_MIN(sqrt(numChannels-1), MAX_SH_ORDER);
+    pData->ambiRIRorder = HOSIRR_MIN(sqrt(numChannels-1), HOSIRR_MAX_SH_ORDER);
     pData->nSH = numChannels;
     pData->analysisOrder = pData->ambiRIRorder;
     pData->ambiRIRlength_samples = numSamples;
@@ -1851,7 +1859,7 @@ void hosirrlib_setWindowLength(void* const hHS, int newValue)
     /* round to nearest multiple of 2 */
     pData->windowLength = newValue % 2 == 0 ? newValue : newValue + 2 - (newValue % 2);
     /* clamp within bounds */
-    pData->windowLength = SAF_CLAMP(pData->windowLength, MIN_WINDOW_LENGTH, MAX_WINDOW_LENGTH);
+    pData->windowLength = HOSIRR_CLAMP(pData->windowLength, MIN_WINDOW_LENGTH, MAX_WINDOW_LENGTH);
     pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
 }
 
@@ -1866,12 +1874,12 @@ void hosirrlib_setWetDryBalance(void* const hHS, float newValue)
 void hosirrlib_setAnalysisOrder(void* const hHS, int newValue)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    pData->analysisOrder = SAF_MIN(SAF_MAX(newValue,1), MAX_SH_ORDER);
+    pData->analysisOrder = HOSIRR_MIN(HOSIRR_MAX(newValue,1), HOSIRR_MAX_SH_ORDER);
     /* FUMA only supports 1st order */
-    if(pData->analysisOrder!=ANALYSIS_ORDER_FIRST && pData->chOrdering == CH_FUMA)
-        pData->chOrdering = CH_ACN;
-    if(pData->analysisOrder!=ANALYSIS_ORDER_FIRST && pData->norm == NORM_FUMA)
-        pData->norm = NORM_SN3D;
+    if(pData->analysisOrder!=ANALYSIS_ORDER_FIRST && pData->chOrdering == FUMA_ORDER)
+        pData->chOrdering = ACN_ORDER;
+    if(pData->analysisOrder!=ANALYSIS_ORDER_FIRST && pData->norm == FUMA_NORM)
+        pData->norm = SN3D_NORM;
     pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
 }
 
@@ -1880,8 +1888,8 @@ void hosirrlib_setLoudspeakerAzi_deg(void* const hHS, int index, float newAzi_de
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     if(newAzi_deg>180.0f)
         newAzi_deg = -360.0f + newAzi_deg;
-    newAzi_deg = SAF_MAX(newAzi_deg, -180.0f);
-    newAzi_deg = SAF_MIN(newAzi_deg, 180.0f);
+    newAzi_deg = HOSIRR_MAX(newAzi_deg, -180.0f);
+    newAzi_deg = HOSIRR_MIN(newAzi_deg, 180.0f);
     pData->loudpkrs_dirs_deg[index][0] = newAzi_deg;
     pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
 }
@@ -1889,8 +1897,8 @@ void hosirrlib_setLoudspeakerAzi_deg(void* const hHS, int index, float newAzi_de
 void hosirrlib_setLoudspeakerElev_deg(void* const hHS, int index, float newElev_deg)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    newElev_deg = SAF_MAX(newElev_deg, -90.0f);
-    newElev_deg = SAF_MIN(newElev_deg, 90.0f);
+    newElev_deg = HOSIRR_MAX(newElev_deg, -90.0f);
+    newElev_deg = HOSIRR_MIN(newElev_deg, 90.0f);
     pData->loudpkrs_dirs_deg[index][1] = newElev_deg;
     pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
 }
@@ -1899,30 +1907,31 @@ void hosirrlib_setNumLoudspeakers(void* const hHS, int new_nLoudspeakers)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     pData->nLoudpkrs = new_nLoudspeakers > MAX_NUM_LOUDSPEAKERS ? MAX_NUM_LOUDSPEAKERS : new_nLoudspeakers;
-    pData->nLoudpkrs = SAF_MAX(MIN_NUM_LOUDSPEAKERS, pData->nLoudpkrs);
+    pData->nLoudpkrs = HOSIRR_MAX(MIN_NUM_LOUDSPEAKERS, pData->nLoudpkrs);
     pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
 }
 
 void  hosirrlib_setOutputConfigPreset(void* const hHS, int newPresetID)
 {
     hosirrlib_data *pData = ( hosirrlib_data*)(hHS);
-    loadLoudspeakerArrayPreset(newPresetID, pData->loudpkrs_dirs_deg, &(pData->nLoudpkrs));
+//    loadLoudspeakerArrayPreset(newPresetID, pData->loudpkrs_dirs_deg, &(pData->nLoudpkrs));
+    loadSphDesignPreset(newPresetID, pData->loudpkrs_dirs_deg, &(pData->nLoudpkrs)); // TODO: SPHDESIGNs coincide with LS arrays for now
     pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
 }
 
 void hosirrlib_setChOrder(void* const hHS, int newOrder)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    if((CH_ORDER)newOrder != CH_FUMA || pData->analysisOrder==ANALYSIS_ORDER_FIRST) /* FUMA only supports 1st order */
-        pData->chOrdering = (CH_ORDER)newOrder;
+    if((CH_ORDERING)newOrder != FUMA_ORDER || pData->analysisOrder==ANALYSIS_ORDER_FIRST) /* FUMA only supports 1st order */
+        pData->chOrdering = (CH_ORDERING)newOrder;
     pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
 }
 
 void hosirrlib_setNormType(void* const hHS, int newType)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    if((NORM_TYPES)newType != NORM_FUMA || pData->analysisOrder==ANALYSIS_ORDER_FIRST) /* FUMA only supports 1st order */
-        pData->norm = (NORM_TYPES)newType;
+    if((NORMALIZATION_TYPES)newType != FUMA_NORM || pData->analysisOrder==ANALYSIS_ORDER_FIRST) /* FUMA only supports 1st order */
+        pData->norm = (NORMALIZATION_TYPES)newType;
     pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
 }
 

@@ -61,46 +61,15 @@ extern "C" {
 /* ========================================================================== */
 
 
-#ifndef __COMMON_H_INCLUDED__ // avoid conflict with saf if included in same project
+//#ifndef __COMMON_H_INCLUDED__ // avoid conflict with saf if included in same project
 
 /** Available static beamforming approaches */
 typedef enum {
-    STATIC_BEAM_TYPE_CARDIOID = 1,  /**< cardioid */
-    STATIC_BEAM_TYPE_HYPERCARDIOID, /**< hyper-cardioid */
-    STATIC_BEAM_TYPE_MAX_EV         /**< hyper-cardioid with max_rE weighting */
+    CARDIOID_BEAM = 1,  /**< cardioid */
+    HYPERCARDIOID_BEAM, /**< hyper-cardioid */
+    MAX_EV_BEAM         /**< hyper-cardioid with max_rE weighting */
 
-} STATIC_BEAM_TYPES;
-
-/**
- * Available loudspeaker array presets
- */
-typedef enum _LOUDSPEAKER_ARRAY_PRESETS {
-    LOUDSPEAKER_ARRAY_PRESET_DEFAULT = 1,
-    LOUDSPEAKER_ARRAY_PRESET_15PX,
-    LOUDSPEAKER_ARRAY_PRESET_16PX,
-    LOUDSPEAKER_ARRAY_PRESET_5PX,
-    LOUDSPEAKER_ARRAY_PRESET_7PX,
-    LOUDSPEAKER_ARRAY_PRESET_8PX,
-    LOUDSPEAKER_ARRAY_PRESET_9PX,
-    LOUDSPEAKER_ARRAY_PRESET_10PX,
-    LOUDSPEAKER_ARRAY_PRESET_11PX,
-    LOUDSPEAKER_ARRAY_PRESET_11PX_7_4,
-    LOUDSPEAKER_ARRAY_PRESET_13PX,
-    LOUDSPEAKER_ARRAY_PRESET_22PX,
-    LOUDSPEAKER_ARRAY_PRESET_AALTO_MCC,
-    LOUDSPEAKER_ARRAY_PRESET_AALTO_MCC_SUBSET,
-    LOUDSPEAKER_ARRAY_PRESET_AALTO_APAJA,
-    LOUDSPEAKER_ARRAY_PRESET_AALTO_LR,
-    LOUDSPEAKER_ARRAY_PRESET_DTU_AVIL,
-    LOUDSPEAKER_ARRAY_PRESET_ZYLIA_LAB,
-    LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_4,
-    LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_12,
-    LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_24,
-    LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_36,
-    LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_48,
-    LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_60
-    
-}LOUDSPEAKER_ARRAY_PRESETS;
+} BEAM_TYPES;
 
 /**
  * Available Ambisonic channel ordering conventions
@@ -108,10 +77,10 @@ typedef enum _LOUDSPEAKER_ARRAY_PRESETS {
  * @note CH_FUMA only supported for 1st order input.
  */
 typedef enum _CH_ORDER {
-    CH_ACN = 1, /**< Ambisonic Channel Numbering (ACN) */
-    CH_FUMA     /**< (Obsolete) Furse-Malham/B-format (WXYZ) */
+    ACN_ORDER = 1, /**< Ambisonic Channel Numbering (ACN) */
+    FUMA_ORDER     /**< (Obsolete) Furse-Malham/B-format (WXYZ) */
 
-} CH_ORDER;
+} CH_ORDERING;
 
 /** Number of channel ordering options */
 #define HOSIRR_NUM_CH_ORDERINGS ( 2 )
@@ -123,14 +92,79 @@ typedef enum _CH_ORDER {
  *       1/sqrt(2) scaling on the omni.
  */
 typedef enum _NORM_TYPES {
-    NORM_N3D = 1,   /**< orthonormalised (N3D) */
-    NORM_SN3D,      /**< Schmidt semi-normalisation (SN3D) */
-    NORM_FUMA       /**< (Obsolete) Same as NORM_SN3D for 1st order */
+    N3D_NORM = 1,   /**< orthonormalised (N3D) */
+    SN3D_NORM,      /**< Schmidt semi-normalisation (SN3D) */
+    FUMA_NORM       /**< (Obsolete) Same as NORM_SN3D for 1st order */
 
-} NORM_TYPES;
+} NORMALIZATION_TYPES;
 
 /** Number of normalisation options */
 #define HOSIRR_NUM_NORM_TYPES ( 3 )
+
+/**
+ * Available loudspeaker array presets
+ */
+typedef enum _LS_ARRAY_PRESETS {
+    LS_ARRAY_PRESET_DEFAULT = 1,
+    LS_ARRAY_PRESET_15PX,
+    LS_ARRAY_PRESET_16PX,
+    LS_ARRAY_PRESET_5PX,
+    LS_ARRAY_PRESET_7PX,
+    LS_ARRAY_PRESET_8PX,
+    LS_ARRAY_PRESET_9PX,
+    LS_ARRAY_PRESET_10PX,
+    LS_ARRAY_PRESET_11PX,
+    LS_ARRAY_PRESET_11PX_7_4,
+    LS_ARRAY_PRESET_13PX,
+    LS_ARRAY_PRESET_22PX,
+    LS_ARRAY_PRESET_AALTO_MCC,
+    LS_ARRAY_PRESET_AALTO_MCC_SUBSET,
+    LS_ARRAY_PRESET_AALTO_APAJA,
+    LS_ARRAY_PRESET_AALTO_LR,
+    LS_ARRAY_PRESET_DTU_AVIL,
+    LS_ARRAY_PRESET_ZYLIA_LAB,
+    LS_ARRAY_PRESET_T_DESIGN_4,
+    LS_ARRAY_PRESET_T_DESIGN_12,
+    LS_ARRAY_PRESET_T_DESIGN_24,
+    LS_ARRAY_PRESET_T_DESIGN_36,
+    LS_ARRAY_PRESET_T_DESIGN_48,
+    LS_ARRAY_PRESET_T_DESIGN_60
+    
+} LS_ARRAY_PRESETS;
+
+//#endif // __COMMON_H_INCLUDED__
+
+
+/**
+ * Available SPHERICAL DESIGN presets
+ */
+typedef enum _SPHDESIGN_PRESETS {
+    SPHDESIGN_PRESET_DEFAULT = 1,
+    SPHDESIGN_PRESET_15PX,
+    SPHDESIGN_PRESET_16PX,
+    SPHDESIGN_PRESET_5PX,
+    SPHDESIGN_PRESET_7PX,
+    SPHDESIGN_PRESET_8PX,
+    SPHDESIGN_PRESET_9PX,
+    SPHDESIGN_PRESET_10PX,
+    SPHDESIGN_PRESET_11PX,
+    SPHDESIGN_PRESET_11PX_7_4,
+    SPHDESIGN_PRESET_13PX,
+    SPHDESIGN_PRESET_22PX,
+    SPHDESIGN_PRESET_AALTO_MCC,
+    SPHDESIGN_PRESET_AALTO_MCC_SUBSET,
+    SPHDESIGN_PRESET_AALTO_APAJA,
+    SPHDESIGN_PRESET_AALTO_LR,
+    SPHDESIGN_PRESET_DTU_AVIL,
+    SPHDESIGN_PRESET_ZYLIA_LAB,
+    SPHDESIGN_PRESET_T_DESIGN_4,
+    SPHDESIGN_PRESET_T_DESIGN_12,
+    SPHDESIGN_PRESET_T_DESIGN_24,
+    SPHDESIGN_PRESET_T_DESIGN_36,
+    SPHDESIGN_PRESET_T_DESIGN_48,
+    SPHDESIGN_PRESET_T_DESIGN_60
+    
+} SPHDESIGN_PRESETS;
 
 /**
  * Available analysis/rendering order options
@@ -147,7 +181,6 @@ typedef enum _ANALYSIS_ORDERS {
     
 } ANALYSIS_ORDERS;
 
-#endif // __COMMON_H_INCLUDED__
 
 /** SRIR analysis stages */
 typedef enum {
@@ -159,8 +192,10 @@ typedef enum {
     DIFFUSENESS_ONSET_FOUND,/**< T60s are calculated for each beam/band */
     RIR_BANDS_SPLIT,        /**< RIR is split into bands */
     BEAMFORMED,             /**< SHD signal has been beamformed into directional signals (by band)  */
-    RIR_EDC_DONE,           /**< EDCs are calculated for each beam/band */
-    T60_DONE,               /**< T60s are calculated for each beam/band */
+    RIR_EDC_OMNI_DONE,      /**< EDCs are calculated for each band of the omni channel */
+    T60_OMNI_DONE,          /**< T60s are calculated for each band of the omni channel */
+    RIR_EDC_DIR_DONE,       /**< EDCs are calculated for each beam/band */
+    T60_DIR_DONE,           /**< T60s are calculated for each beam/band */
     RIR_PROCESSED,          /**< RIR has been fully processed and ready for FDN synthesis */
     FDN_BANDS_SPLIT,        /**< FDN is split into bands */
     FDN_EDC_DONE,           /**< EDCs are calculated for each beam/band of the FDN channels */
@@ -323,7 +358,7 @@ void hosirrlib_setNumLoudspeakers(void* const hHS, int new_nLoudspeakers);
  * Sets the output loudspeaker preset
  *
  * For convenience, presets for several popular arrangements are included (see
- * LOUDSPEAKER_ARRAY_PRESETS enum).
+ * LS_ARRAY_PRESETS enum).
  */
 void hosirrlib_setOutputConfigPreset(void* const hHS, int newPresetID);
 

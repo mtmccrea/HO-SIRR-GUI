@@ -56,12 +56,10 @@
 #include <math.h>
 #include <string.h>
 
-#ifndef __HOSIRRLIB_H_INCLUDED__ // mtm yuk
-#include "hosirrlib.h"
-#endif
-
 #include "saf.h"
 #include "saf_externals.h" /* to also include saf dependencies (cblas etc.) */
+
+#include "hosirrlib.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,9 +68,10 @@ extern "C" {
 /* ========================================================================== */
 /*                            Internal Parameters                             */
 /* ========================================================================== */
-
-#define MAX_SH_ORDER ( HOSIRR_MAX_SH_ORDER )
-#define MAX_NUM_SH_SIGNALS ( (MAX_SH_ORDER+1)*(MAX_SH_ORDER+1) ) /* Maximum number of spherical harmonic components */
+//#ifndef HOSIRR_MAX_SH_ORDER
+//#define HOSIRR_MAX_SH_ORDER ( HOSIRR_MAX_SH_ORDER )
+//#define MAX_NUM_SH_SIGNALS ( (HOSIRR_MAX_SH_ORDER+1)*(HOSIRR_MAX_SH_ORDER+1) ) /* Maximum number of spherical harmonic components */
+//#endif
 #define MAX_NUM_LOUDSPEAKERS ( HOSIRR_MAX_NUM_OUTPUTS ) /* Maximum permitted channels for the VST standard */
 #define MIN_NUM_LOUDSPEAKERS ( 4 )    /* To help avoid traingulation errors when using, e.g. AllRAD */
 #define MAX_NUM_LOUDSPEAKERS_IN_PRESET ( MAX_NUM_LOUDSPEAKERS )
@@ -82,6 +81,43 @@ extern "C" {
 #define MAX_DIFF_FREQ_HZ ( 3000 )
 #define ALPHA_DIFF_COEFF ( 0.7165f )
 
+/* ========================================================================== */
+/*                                 SAF SUBSTITUTES                            */
+/* Conflicting versions of SAF will have discrepancies in these funcs, so     */
+/* define local versions                                                      */
+/* ========================================================================== */
+
+#define HOSIRR_MAX(a,b)      \
+({                           \
+    __typeof__ (a) _a = (a); \
+    __typeof__ (b) _b = (b); \
+    _a > _b ? _a : _b;       \
+})
+
+#define HOSIRR_MIN(a,b)      \
+({                           \
+    __typeof__ (a) _a = (a); \
+    __typeof__ (b) _b = (b); \
+    _a < _b ? _a : _b;       \
+})
+
+#define HOSIRR_CLAMP(val, min_val, max_val) ({  \
+    __typeof__(val) _val = (val);               \
+    __typeof__(min_val) _min_val = (min_val);   \
+    __typeof__(max_val) _max_val = (max_val);   \
+    _val < _min_val ? _min_val : (_val > _max_val ? _max_val : _val); \
+})
+
+/** Macro to print a warning message along with the filename and line number */
+# define hosirr_print_warning(message) {fprintf(stdout, \
+                                    "SAF WARNING: %s [%s LINE %u] \n", message,\
+                                    __FILE__, __LINE__);}
+
+/** Macro to print a error message along with the filename and line number */
+# define hosirr_print_error(message) {fprintf(stderr, \
+                                  "SAF ERROR: %s [%s LINE %u] \n", message, \
+                                  __FILE__, __LINE__); \
+                                  exit(EXIT_FAILURE);}
 
 /* ========================================================================== */
 /*                                 Structures                                 */
@@ -131,7 +167,7 @@ typedef struct _hosirrlib
     float diffuseMin;       // minimum diffuseness to detect onset, otherwise it's direct onset +10ms
     
     ANALYSIS_STAGE analysisStage;
-    STATIC_BEAM_TYPES beamType;
+    BEAM_TYPES beamType;
     
     /* original hosirrlib */
     
@@ -153,8 +189,8 @@ typedef struct _hosirrlib
     float wetDryBalance;
     int broadBandFirstPeakFLAG;
     float loudpkrs_dirs_deg[MAX_NUM_LOUDSPEAKERS][2];
-    CH_ORDER chOrdering;   /* only ACN is supported */
-    NORM_TYPES norm;       /* N3D or SN3D */
+    CH_ORDERING chOrdering;   /* only ACN is supported */
+    NORMALIZATION_TYPES norm;       /* N3D or SN3D */
 
 } hosirrlib_data;
 
@@ -165,19 +201,23 @@ typedef struct _hosirrlib
 
 /**
  * Returns the loudspeaker directions for a specified loudspeaker array preset
- * (see LOUDSPEAKER_ARRAY_PRESETS enum)
+ * (see LS_ARRAY_PRESETS enum)
  *
- * @param[in]  preset   see LOUDSPEAKER_ARRAY_PRESETS enum
+ * @param[in]  preset   see LS_ARRAY_PRESETS enum
  * @param[out] dirs_deg loudspeaker directions, [azimuth elevation] convention,
  *                      in DEGREES
  * @param[out] nCH      (&) number of loudspeaker directions in the array
  * @param[out] nDims    (&) number of dimensions (2 or 3)
  */
-void loadLoudspeakerArrayPreset(LOUDSPEAKER_ARRAY_PRESETS preset,
-                                float dirs_deg[MAX_NUM_LOUDSPEAKERS_IN_PRESET][2],
-                                int* nCH);
-    
-    
+//void loadLoudspeakerArrayPreset(LS_ARRAY_PRESETS preset,
+//                                float dirs_deg[MAX_NUM_LOUDSPEAKERS_IN_PRESET][2],
+//                                int* nCH);
+
+void loadSphDesignPreset(SPHDESIGN_PRESETS preset,
+                         float dirs_deg[MAX_NUM_LOUDSPEAKERS_IN_PRESET][2], // TODO: SPHDESIGNs coincide with LS arrays for now
+                         int* nCH);
+
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */

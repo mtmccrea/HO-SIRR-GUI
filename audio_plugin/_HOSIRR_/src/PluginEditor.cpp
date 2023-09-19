@@ -294,36 +294,36 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     CBanaOrder->addItem (TRANS("7th order"), ANALYSIS_ORDER_SEVENTH);
 
     /* ambi convention options */
-    CBchFormat->addItem (TRANS("ACN"), CH_ACN);
-    CBchFormat->addItem (TRANS("FuMa"), CH_FUMA);
-    CBnormScheme->addItem (TRANS("N3D"), NORM_N3D);
-    CBnormScheme->addItem (TRANS("SN3D"), NORM_SN3D);
-    CBnormScheme->addItem (TRANS("FuMa"), NORM_FUMA);
+    CBchFormat->addItem (TRANS("ACN"), ACN_ORDER);
+    CBchFormat->addItem (TRANS("FuMa"), FUMA_ORDER);
+    CBnormScheme->addItem (TRANS("N3D"), N3D_NORM);
+    CBnormScheme->addItem (TRANS("SN3D"), SN3D_NORM);
+    CBnormScheme->addItem (TRANS("FuMa"), FUMA_NORM);
 
     /* add loudspeaker preset options */
-    CBoutputDirsPreset->addItem (TRANS("15ch SphCov"), LOUDSPEAKER_ARRAY_PRESET_15PX);
-    CBoutputDirsPreset->addItem (TRANS("16ch SphCov"), LOUDSPEAKER_ARRAY_PRESET_16PX);
-    CBoutputDirsPreset->addItem (TRANS("5.x"), LOUDSPEAKER_ARRAY_PRESET_5PX);
-    CBoutputDirsPreset->addItem (TRANS("7.x"), LOUDSPEAKER_ARRAY_PRESET_7PX);
-    CBoutputDirsPreset->addItem (TRANS("8.x"), LOUDSPEAKER_ARRAY_PRESET_8PX);
-    CBoutputDirsPreset->addItem (TRANS("9.x"), LOUDSPEAKER_ARRAY_PRESET_9PX);
-    CBoutputDirsPreset->addItem (TRANS("10.x"), LOUDSPEAKER_ARRAY_PRESET_10PX);
-    CBoutputDirsPreset->addItem (TRANS("11.x"), LOUDSPEAKER_ARRAY_PRESET_11PX);
-    CBoutputDirsPreset->addItem (TRANS("11.x (7+4)"), LOUDSPEAKER_ARRAY_PRESET_11PX_7_4);
-    CBoutputDirsPreset->addItem (TRANS("13.x"), LOUDSPEAKER_ARRAY_PRESET_13PX);
-    CBoutputDirsPreset->addItem (TRANS("22.x"), LOUDSPEAKER_ARRAY_PRESET_22PX);
-    CBoutputDirsPreset->addItem (TRANS("Aalto MCC"), LOUDSPEAKER_ARRAY_PRESET_AALTO_MCC);
-    CBoutputDirsPreset->addItem (TRANS("Aalto MCC-subset"), LOUDSPEAKER_ARRAY_PRESET_AALTO_MCC_SUBSET);
-    CBoutputDirsPreset->addItem (TRANS("Aalto Apaja"), LOUDSPEAKER_ARRAY_PRESET_AALTO_APAJA);
-    CBoutputDirsPreset->addItem (TRANS("Aalto LR"), LOUDSPEAKER_ARRAY_PRESET_AALTO_LR);
-    CBoutputDirsPreset->addItem (TRANS("DTU AVIL"), LOUDSPEAKER_ARRAY_PRESET_DTU_AVIL);
-    CBoutputDirsPreset->addItem (TRANS("Zylia Lab (22.x)"), LOUDSPEAKER_ARRAY_PRESET_ZYLIA_LAB);
-    CBoutputDirsPreset->addItem (TRANS("T-design (4)"), LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_4);
-    CBoutputDirsPreset->addItem (TRANS("T-design (12)"), LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_12);
-    CBoutputDirsPreset->addItem (TRANS("T-design (24)"), LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_24);
-    CBoutputDirsPreset->addItem (TRANS("T-design (36)"), LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_36);
-    CBoutputDirsPreset->addItem (TRANS("T-design (48)"), LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_48);
-    CBoutputDirsPreset->addItem (TRANS("T-design (60)"), LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_60);
+    CBoutputDirsPreset->addItem (TRANS("15ch SphCov"), LS_ARRAY_PRESET_15PX);
+    CBoutputDirsPreset->addItem (TRANS("16ch SphCov"), LS_ARRAY_PRESET_16PX);
+    CBoutputDirsPreset->addItem (TRANS("5.x"), LS_ARRAY_PRESET_5PX);
+    CBoutputDirsPreset->addItem (TRANS("7.x"), LS_ARRAY_PRESET_7PX);
+    CBoutputDirsPreset->addItem (TRANS("8.x"), LS_ARRAY_PRESET_8PX);
+    CBoutputDirsPreset->addItem (TRANS("9.x"), LS_ARRAY_PRESET_9PX);
+    CBoutputDirsPreset->addItem (TRANS("10.x"), LS_ARRAY_PRESET_10PX);
+    CBoutputDirsPreset->addItem (TRANS("11.x"), LS_ARRAY_PRESET_11PX);
+    CBoutputDirsPreset->addItem (TRANS("11.x (7+4)"), LS_ARRAY_PRESET_11PX_7_4);
+    CBoutputDirsPreset->addItem (TRANS("13.x"), LS_ARRAY_PRESET_13PX);
+    CBoutputDirsPreset->addItem (TRANS("22.x"), LS_ARRAY_PRESET_22PX);
+    CBoutputDirsPreset->addItem (TRANS("Aalto MCC"), LS_ARRAY_PRESET_AALTO_MCC);
+    CBoutputDirsPreset->addItem (TRANS("Aalto MCC-subset"), LS_ARRAY_PRESET_AALTO_MCC_SUBSET);
+    CBoutputDirsPreset->addItem (TRANS("Aalto Apaja"), LS_ARRAY_PRESET_AALTO_APAJA);
+    CBoutputDirsPreset->addItem (TRANS("Aalto LR"), LS_ARRAY_PRESET_AALTO_LR);
+    CBoutputDirsPreset->addItem (TRANS("DTU AVIL"), LS_ARRAY_PRESET_DTU_AVIL);
+    CBoutputDirsPreset->addItem (TRANS("Zylia Lab (22.x)"), LS_ARRAY_PRESET_ZYLIA_LAB);
+    CBoutputDirsPreset->addItem (TRANS("T-design (4)"), LS_ARRAY_PRESET_T_DESIGN_4);
+    CBoutputDirsPreset->addItem (TRANS("T-design (12)"), LS_ARRAY_PRESET_T_DESIGN_12);
+    CBoutputDirsPreset->addItem (TRANS("T-design (24)"), LS_ARRAY_PRESET_T_DESIGN_24);
+    CBoutputDirsPreset->addItem (TRANS("T-design (36)"), LS_ARRAY_PRESET_T_DESIGN_36);
+    CBoutputDirsPreset->addItem (TRANS("T-design (48)"), LS_ARRAY_PRESET_T_DESIGN_48);
+    CBoutputDirsPreset->addItem (TRANS("T-design (60)"), LS_ARRAY_PRESET_T_DESIGN_60);
 
     /* source coordinate viewport */
     outputCoordsVP.reset (new Viewport ("new viewport"));
@@ -389,8 +389,8 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     SL_num_loudspeakers->setValue(hosirrlib_getNumLoudspeakers(hHS),dontSendNotification);
     CBchFormat->setSelectedId(hosirrlib_getChOrder(hHS), dontSendNotification);
     CBnormScheme->setSelectedId(hosirrlib_getNormType(hHS), dontSendNotification);
-    CBchFormat->setItemEnabled(CH_FUMA, hosirrlib_getAnalysisOrder(hHS)==ANALYSIS_ORDER_FIRST ? true : false);
-    CBnormScheme->setItemEnabled(NORM_FUMA, hosirrlib_getAnalysisOrder(hHS)==ANALYSIS_ORDER_FIRST ? true : false);
+    CBchFormat->setItemEnabled(FUMA_ORDER, hosirrlib_getAnalysisOrder(hHS)==ANALYSIS_ORDER_FIRST ? true : false);
+    CBnormScheme->setItemEnabled(FUMA_NORM, hosirrlib_getAnalysisOrder(hHS)==ANALYSIS_ORDER_FIRST ? true : false);
     SL_displayGain->setValue(dispGain_dB, dontSendNotification);
     SL_displayTimeTrim->setValue(dispTimeTrim, dontSendNotification);
     CBdisplayRIR->setSelectedId(currentView, dontSendNotification);
@@ -1275,8 +1275,8 @@ void PluginEditor::timerCallback()
     SL_num_loudspeakers->setValue(hosirrlib_getNumLoudspeakers(hHS),dontSendNotification);
     CBchFormat->setSelectedId(hosirrlib_getChOrder(hHS), dontSendNotification);
     CBnormScheme->setSelectedId(hosirrlib_getNormType(hHS), dontSendNotification);
-    CBchFormat->setItemEnabled(CH_FUMA, hosirrlib_getAnalysisOrder(hHS)==ANALYSIS_ORDER_FIRST ? true : false);
-    CBnormScheme->setItemEnabled(NORM_FUMA, hosirrlib_getAnalysisOrder(hHS)==ANALYSIS_ORDER_FIRST ? true : false);
+    CBchFormat->setItemEnabled(FUMA_ORDER, hosirrlib_getAnalysisOrder(hHS)==ANALYSIS_ORDER_FIRST ? true : false);
+    CBnormScheme->setItemEnabled(FUMA_NORM, hosirrlib_getAnalysisOrder(hHS)==ANALYSIS_ORDER_FIRST ? true : false);
     label_inputOrder->setText(String(hosirrlib_getAmbiRIRinputOrder(hHS)), dontSendNotification);
     label_inputLength->setText(String(hosirrlib_getAmbiRIRlength_seconds(hHS)), dontSendNotification);
     label_inputSampleRate->setText(String(hosirrlib_getAmbiRIRsampleRate(hHS)), dontSendNotification);

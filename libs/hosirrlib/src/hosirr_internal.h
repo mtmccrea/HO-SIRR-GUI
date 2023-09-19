@@ -134,10 +134,11 @@ typedef struct _hosirrlib
     /* new hodecaylib */
     
     // depend only on nDir
-    float** encBeamCoeffs;  // nDir x nSH
+    float** encBeamCoeffs;  // nSH x nDir
     float** decBeamCoeffs;  // nDir x nSH
     float** dirGainBuf;     // nBand x nDir
-    float** t60Buf;         // nBand x nDir
+    float*  t60Buf_omni;    // nBand x 1
+    float** t60Buf_dir;     // nBand x nDir
     
     // depend on output design (nDir) AND input RIR (nSamp)
     float**  rirBuf;        // nSH x nSamp (input RIR)

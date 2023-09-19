@@ -280,12 +280,38 @@ void hosirrlib_allocProcBufs(void * const hHS);
 void hosirrlib_processRIR(void* const hHS);
 void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB);
 void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac);
-void hosirrlib_splitBands(void* const hHS, float** const inBuf, float*** const bndBuf, int removeFiltDelayFLAG, ANALYSIS_STAGE stage);
-void hosirrlib_beamformRIR(void* const hHS, float*** const inBuf, float*** const beamBuf, ANALYSIS_STAGE thisStage);
-void hosirrlib_calcEDC(void* const hHS, float*** const inBuf, float*** const edcBuf, ANALYSIS_STAGE thisStage);
-void hosirrlib_calcT60(void* const hHS, float*** const edcBuf, float** const t60Buf, const float startDb, const float spanDb, const int beginIdx);
+
+void hosirrlib_splitBands(void* const hHS, float** const inBuf, float*** const bndBuf,
+                          int removeFiltDelayFLAG, ANALYSIS_STAGE stage);
+void hosirrlib_beamformRIR(void* const hHS, float*** const inBuf, float*** const beamBuf,
+                           ANALYSIS_STAGE thisStage);
+void hosirrlib_calcEDC_beams(void* const hHS, float*** const beamBuf, float*** const edcBuf,
+                       const int nBand, const int nDir, const int nSamp, ANALYSIS_STAGE thisStage);
+void hosirrlib_calcEDC_omni(void* const hHS, float*** const shInBuf, float*** const edcBuf,
+                            const int nBand, const int nSamp, ANALYSIS_STAGE thisStage);
+void hosirrlib_calcT60_beams(void* const hHS, float*** const edcBuf, float** const t60Buf,
+                       const int nBand, const int nDir, const int nSamp,
+                       const float startDb, const float spanDb, const int beginIdx, ANALYSIS_STAGE thisStage);
+void hosirrlib_calcT60_omni(void* const hHS, float*** const edcBuf, float* const t60Buf,
+                            const int nBand, const int nSamp,
+                            const float startDb, const float spanDb, const int beginIdx, ANALYSIS_STAGE thisStage);
 
 /* Helpers */
+void hosirrlib_calcEDC_1ch(float* const dataBuf, const int nSamp);
+void hosirrlib_findT60_bounds(float* const edcBuf,
+                              const int beginIdx,
+                              const int nSamp,
+                              const float start_db,
+                              const float span_db,
+                              int* const st_end_meas);
+void hosirrlib_t60_lineFit(float* const edcBuf,
+                           float* x_slopeBuf,
+                           float* y_edc0mBuf,
+                           float* stageBuf,
+                           const int st_meas,
+                           const int end_meas,
+                           const float fs,
+                           float* const t60Buf_wrPtr);
 int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thresh);
 int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float thresh);
 

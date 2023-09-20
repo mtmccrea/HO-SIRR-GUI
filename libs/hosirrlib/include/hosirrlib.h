@@ -196,9 +196,9 @@ typedef enum {
     T60_OMNI_DONE,          /**< T60s are calculated for each band of the omni channel */
     RIR_EDC_DIR_DONE,       /**< EDCs are calculated for each beam/band */
     T60_DIR_DONE,           /**< T60s are calculated for each beam/band */
-    RIR_PROCESSED,          /**< RIR has been fully processed and ready for FDN synthesis */
-    FDN_BANDS_SPLIT,        /**< FDN is split into bands */
-    FDN_EDC_DONE,           /**< EDCs are calculated for each beam/band of the FDN channels */
+//    RIR_PROCESSED,          /**< RIR has been fully processed and ready for FDN synthesis */
+//    FDN_BANDS_SPLIT,        /**< FDN is split into bands */
+//    FDN_EDC_DONE            /**< EDCs are calculated for each beam/band of the FDN channels */
     DIRGAIN_DONE            /**< Directional gain has been calculated between FDN and RIR channels/bands */
 } ANALYSIS_STAGE;
     
@@ -267,7 +267,7 @@ void hosirrlib_render(void* const hHS);
 /* Create */
 void hosirrlib_initBandFilters(void* const hHS);
 
-/* Set RIR */
+/* Set RIR, init resources */
 int hosirrlib_setRIR(void* const hHS,
                      const float** H,
                      int numChannels,
@@ -282,7 +282,7 @@ void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB);
 void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac);
 
 void hosirrlib_splitBands(void* const hHS, float** const inBuf, float*** const bndBuf,
-                          int removeFiltDelayFLAG, ANALYSIS_STAGE stage);
+                          int removeFiltDelayFLAG, ANALYSIS_STAGE thisStage);
 void hosirrlib_beamformRIR(void* const hHS, float*** const inBuf, float*** const beamBuf,
                            ANALYSIS_STAGE thisStage);
 void hosirrlib_calcEDC_beams(void* const hHS, float*** const beamBuf, float*** const edcBuf,
@@ -295,23 +295,34 @@ void hosirrlib_calcT60_beams(void* const hHS, float*** const edcBuf, float** con
 void hosirrlib_calcT60_omni(void* const hHS, float** const edcBuf_omn, float* const t60Buf,
                             const int nBand, const int nSamp,
                             const float startDb, const float spanDb, const int beginIdx, ANALYSIS_STAGE thisStage);
+void hosirrlib_calcDirectionalGain(
+                                   void*   const hHS,
+                                   float** const dirGainBuf, // nBand x nChan
+                                   const float start_db,
+                                   const float span_db,
+                                   const int beginIdx,
+                                   ANALYSIS_STAGE thisStage);
 
 /* Helpers */
 void hosirrlib_calcEDC_1ch(float* const dataBuf, const int nSamp);
-void hosirrlib_findT60_bounds(float* const edcBuf,
-                              const int beginIdx,
-                              const int nSamp,
-                              const float start_db,
-                              const float span_db,
-                              int* const st_end_meas);
-void hosirrlib_t60_lineFit(float* const edcBuf,
-                           float* x_slopeBuf,
-                           float* y_edc0mBuf,
-                           float* stageBuf,
-                           const int st_meas,
-                           const int end_meas,
-                           const float fs,
-                           float* const t60Buf_wrPtr);
+float hosirrlib_gainOffset_1ch(
+                              float* const srcEDC,
+                              float* const targetEDC,
+                              const int startIdx,
+                               const int endIdx);
+void hosirrlib_findDecayBounds(float* const edcBuf,
+                               const int beginIdx,
+                               const int bufLength,
+                               const float start_db,
+                               const float span_db,
+                               int* const st_end_meas);
+float hosirrlib_T60_lineFit(float* const edcBuf,
+                            float* x_slopeBuf,
+                            float* y_edc0mBuf,
+                            float* stageBuf,
+                            const int startIdx,
+                            const int endIdx,
+                            const float fs);
 int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thresh);
 int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float thresh);
 

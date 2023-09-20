@@ -286,13 +286,13 @@ void hosirrlib_splitBands(void* const hHS, float** const inBuf, float*** const b
 void hosirrlib_beamformRIR(void* const hHS, float*** const inBuf, float*** const beamBuf,
                            ANALYSIS_STAGE thisStage);
 void hosirrlib_calcEDC_beams(void* const hHS, float*** const beamBuf, float*** const edcBuf,
-                       const int nBand, const int nDir, const int nSamp, ANALYSIS_STAGE thisStage);
-void hosirrlib_calcEDC_omni(void* const hHS, float*** const shInBuf, float*** const edcBuf,
+                             const int nBand, const int nDir, const int nSamp, ANALYSIS_STAGE thisStage);
+void hosirrlib_calcEDC_omni(void* const hHS, float*** const shInBuf, float** const edcBuf_omn,
                             const int nBand, const int nSamp, ANALYSIS_STAGE thisStage);
 void hosirrlib_calcT60_beams(void* const hHS, float*** const edcBuf, float** const t60Buf,
-                       const int nBand, const int nDir, const int nSamp,
-                       const float startDb, const float spanDb, const int beginIdx, ANALYSIS_STAGE thisStage);
-void hosirrlib_calcT60_omni(void* const hHS, float*** const edcBuf, float* const t60Buf,
+                             const int nBand, const int nDir, const int nSamp,
+                             const float startDb, const float spanDb, const int beginIdx, ANALYSIS_STAGE thisStage);
+void hosirrlib_calcT60_omni(void* const hHS, float** const edcBuf_omn, float* const t60Buf,
                             const int nBand, const int nSamp,
                             const float startDb, const float spanDb, const int beginIdx, ANALYSIS_STAGE thisStage);
 
@@ -316,7 +316,8 @@ int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thr
 int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float thresh);
 
 void hosirrlib_renderTMP(void* const hHS);
-void hosirrlib_copyNormalizedEDCBufs(void* const hHS, float** edcCopy, float displayRange);
+void hosirrlib_copyNormalizedEDCs_dir(void* const hHS, float** edcCopy, float displayRange);
+void hosirrlib_copyNormalizedEDCs_omni(void* const hHS, float** edcCopy, float displayRange);
 
 /* Getters */
 int hosirrlib_getNumDirections(void* const hHS);
@@ -336,7 +337,7 @@ void hosirrlib_setBroadBandFirstPeakFLAG(void* const hHS, int newState);
 /**
  * Sets the windowing length, in samples, used by the HOSIRR method
  */
-void hosirrlib_setWindowLength (void* const hHS, int newValue);
+void hosirrlib_setWindowLength(void* const hHS, int newValue);
 
 /**
  * Sets the wet/dry balance; when 0: only dry (non-diffuse), 1: only wet

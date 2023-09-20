@@ -1230,7 +1230,8 @@ void PluginEditor::buttonClicked (juce::Button* buttonThatWasClicked)
                                hosirrlib_getAmbiRIRlength_samples(hHS));
                 buffer.clear();
                 float** edcCopy = buffer.getArrayOfWritePointers();
-                hosirrlib_copyNormalizedEDCBufs(hHS, edcCopy, 60.f); // populates lsRIR var, mtm
+//                hosirrlib_copyNormalizedEDCs_dir(hHS, edcCopy, 60.f); // populates lsRIR var, mtm
+                hosirrlib_copyNormalizedEDCs_omni(hHS, edcCopy, 60.f); // populates lsRIR var, mtm
 
                 /* write audio buffer to disk */
                 WavAudioFormat wavFormat;

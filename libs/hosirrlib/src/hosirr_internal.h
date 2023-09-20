@@ -141,14 +141,15 @@ typedef struct _hosirrlib
     float** t60Buf_dir;     // nBand x nDir
     
     // depend on output design (nDir) AND input RIR (nSamp)
-    float**  rirBuf;        // nSH x nSamp (input RIR)
-    float*** rirBuf_bands;  // nBand x nSH x nSamp
-    float*** rirBuf_beams;  // nBand x nDir x nSamp
-    float*** edcBuf_rir;    // nBand x nDir x nSamp
-    float**  fdnBuf;        // nDir x nSamp
-    float*** fdnBuf_bands;  // nBand nDir x nSamp
-    float*** edcBuf_fdn;    // nBand x nDir x nSamp
-    float**  fdnBuf_shd;    // nSH x nSamp (output RIR)
+    float**  rirBuf_sh;         // nSH x nSamp (input RIR)
+    float*** rirBuf_bnd_sh;     // nBand x nSH x nSamp
+    float*** rirBuf_bnd_dir;    // nBand x nDir x nSamp
+    float**  edcBufOmn_bnd;     // nBand x nSamp
+    float*** edcBuf_bnd_dir;    // nBand x nDir x nSamp
+    float**  fdnBuf_dir;        // nDir x nSamp
+    float*** fdnBuf_bnd_dir;    // nBand nDir x nSamp
+    float*** edcBufFDN_bnd_dir; // nBand x nDir x nSamp
+    float**  fdnBuf_sh;         // nSH x nSamp (output RIR)
     
     float**  H_bandFilt;      // nBand x bandFiltOrder + 1
     float*   bandCenterFreqs; // size should match nBand.

@@ -49,7 +49,6 @@
  * @date 04.01.2020
  */
 
-//#include "../src/hosirr_internal.h"
 #include "hosirr_internal.h"
 
 void hosirrlib_create(
@@ -69,13 +68,14 @@ void hosirrlib_create(
     pData->t60Buf_dir    = NULL;    // nDir x nBand
     
     // depend on output design (nDir) AND input RIR (nSamp)
-    pData->rirBuf        = NULL;    // nSH x nSamp
-    pData->rirBuf_beams  = NULL;    // nDir x nSamp
-    pData->fdnBuf        = NULL;    // nDir x nSamp
-    pData->fdnBuf_bands  = NULL;    // nBand x nDir x nSamp
-    pData->edcBuf_rir    = NULL;    // nDir x nBand x nSamp
-    pData->edcBuf_fdn    = NULL;    // nDir x nBand x nSamp
-    pData->fdnBuf_shd    = NULL;    // nSH x nSamp
+    pData->rirBuf_sh        = NULL;    // nSH x nSamp
+    pData->rirBuf_bnd_dir   = NULL;    // nDir x nSamp
+    pData->fdnBuf_dir       = NULL;    // nDir x nSamp
+    pData->fdnBuf_bnd_dir   = NULL;    // nBand x nDir x nSamp
+    pData->edcBufOmn_bnd    = NULL;    // nBand x nSamp
+    pData->edcBuf_bnd_dir   = NULL;    // nDir x nBand x nSamp
+    pData->edcBufFDN_bnd_dir = NULL;   // nDir x nBand x nSamp
+    pData->fdnBuf_sh        = NULL;    // nSH x nSamp
     
     pData->H_bandFilt      = NULL;  // nBand x filtOrder+1
     pData->bandCenterFreqs = NULL;
@@ -104,9 +104,9 @@ void hosirrlib_create(
     /* Initialize spherical design for directional analysis */
     // TODO: SPHDESIGNs coincide with LS arrays for now, not a clean separation
     loadSphDesignPreset( // default design currently just set by enum SPHDESIGN_ARRAY_PRESET_15PX
-                               SPHDESIGN_PRESET_15PX,
-                               pData->loudpkrs_dirs_deg,
-                               &(pData->nLoudpkrs));
+                        SPHDESIGN_PRESET_15PX,
+                        pData->loudpkrs_dirs_deg,
+                        &(pData->nLoudpkrs));
     pData->nDir = pData->nLoudpkrs;
     
     /* ~~~~~~~~~~~~~~~~~~ */
@@ -147,7 +147,6 @@ void hosirrlib_destroy(
     if (pData != NULL) {
         
         /* new hodecaylib */
-        
         // depend only on output design (nDir)
         free(pData->encBeamCoeffs);
         free(pData->decBeamCoeffs);
@@ -155,24 +154,25 @@ void hosirrlib_destroy(
         free(pData->t60Buf_omni);
         free(pData->t60Buf_dir);
         // depend on output design (nDir) AND input RIR (nSamp)
-        free(pData->rirBuf);
-        free(pData->rirBuf_bands);
-        free(pData->rirBuf_beams);
-        free(pData->edcBuf_rir);
-        free(pData->fdnBuf);
-        free(pData->fdnBuf_bands);
-        free(pData->edcBuf_fdn);
-        free(pData->fdnBuf_shd);
+        free(pData->rirBuf_sh);
+        free(pData->rirBuf_bnd_sh);
+        free(pData->rirBuf_bnd_dir);
+        free(pData->edcBufOmn_bnd);
+        free(pData->edcBuf_bnd_dir);
+        free(pData->fdnBuf_dir);
+        free(pData->fdnBuf_bnd_dir);
+        free(pData->edcBufFDN_bnd_dir);
+        free(pData->fdnBuf_sh);
         // unchanging after init
         free(pData->H_bandFilt);
         free(pData->bandCenterFreqs);
         free(pData->bandXOverFreqs);
         
         /* original hosirrlib */
-        
         free(pData->shir);
         free(pData->lsir);
         free(pData->progressText);
+        
         free(pData);
         pData = NULL;
     }
@@ -214,9 +214,9 @@ int hosirrlib_setRIR(
     pData->duration = numSamples / (float)sampleRate;
     
     /* (Re)Alloc and copy in input RIR */
-    pData->rirBuf = (float**)realloc2d((void**)pData->rirBuf, numChannels, numSamples, sizeof(float));
+    pData->rirBuf_sh = (float**)realloc2d((void**)pData->rirBuf_sh, numChannels, numSamples, sizeof(float));
     for(int i = 0; i < numChannels; i++)
-        utility_svvcopy(H[i], numSamples, pData->rirBuf[i]);
+        utility_svvcopy(H[i], numSamples, pData->rirBuf_sh[i]);
     
     /* set FLAGS */
     pData->analysisStage = RIR_LOADED;
@@ -357,19 +357,21 @@ void hosirrlib_allocProcBufs(
     const int nSamp = pData->nSamp;
 
     // These members depend on output design (nDir) AND input RIR (nSH, nSamp)
-    pData->rirBuf_bands = (float***)realloc3d((void***)pData->rirBuf_bands,
+    pData->rirBuf_bnd_sh = (float***)realloc3d((void***)pData->rirBuf_bnd_sh,
                                              nBand, nSH, nSamp, sizeof(float));
-    pData->rirBuf_beams = (float***)realloc3d((void***)pData->rirBuf_beams,
+    pData->rirBuf_bnd_dir = (float***)realloc3d((void***)pData->rirBuf_bnd_dir,
                                              nBand, nDir, nSamp, sizeof(float));
-    pData->edcBuf_rir   = (float***)realloc3d((void***)pData->edcBuf_rir,
+    pData->edcBufOmn_bnd   = (float**)realloc2d((void**)pData->edcBufOmn_bnd,
+                                              nBand, nSamp, sizeof(float));
+    pData->edcBuf_bnd_dir   = (float***)realloc3d((void***)pData->edcBuf_bnd_dir,
                                               nBand, nDir, nSamp, sizeof(float));
-    pData->edcBuf_fdn   = (float***)realloc3d((void***)pData->edcBuf_fdn,
-                                              nBand, nDir, nSamp, sizeof(float));
-    pData->fdnBuf_bands = (float***)realloc3d((void***)pData->fdnBuf_bands,
-                                             nBand, nDir, nSamp, sizeof(float));
-    pData->fdnBuf       = (float**)realloc2d((void**)pData->fdnBuf,
+    pData->fdnBuf_dir       = (float**)realloc2d((void**)pData->fdnBuf_dir,
                                              nDir, nSamp, sizeof(float));
-    pData->fdnBuf_shd   = (float**)realloc2d((void**)pData->fdnBuf_shd,
+    pData->fdnBuf_bnd_dir = (float***)realloc3d((void***)pData->fdnBuf_bnd_dir,
+                                             nBand, nDir, nSamp, sizeof(float));
+    pData->edcBufFDN_bnd_dir   = (float***)realloc3d((void***)pData->edcBufFDN_bnd_dir,
+                                              nBand, nDir, nSamp, sizeof(float));
+    pData->fdnBuf_sh   = (float**)realloc2d((void**)pData->fdnBuf_sh,
                                              nSH, nSamp, sizeof(float));
     pData->encBeamCoeffs = (float**)realloc2d((void**)pData->encBeamCoeffs,
                                               nSH, nDir, sizeof(float));
@@ -440,14 +442,14 @@ void hosirrlib_processRIR(
     
     hosirrlib_setDirectOnsetIndex(pData, directOnsetThreshDb);
     hosirrlib_setDiffuseOnsetIndex(pData, diffuseOnsetThresh);
-    hosirrlib_splitBands(pData, pData->rirBuf, pData->rirBuf_bands, 1, RIR_BANDS_SPLIT);
-    hosirrlib_beamformRIR(pData, pData->rirBuf_bands, pData->rirBuf_beams, BEAMFORMED);
+    hosirrlib_splitBands(pData, pData->rirBuf_sh, pData->rirBuf_bnd_sh, 1, RIR_BANDS_SPLIT);
+    hosirrlib_beamformRIR(pData, pData->rirBuf_bnd_sh, pData->rirBuf_bnd_dir, BEAMFORMED);
     
     // omni, bandwise EDCs, T60s
-    hosirrlib_calcEDC_omni(pData, pData->rirBuf_bands, pData->edcBuf_rir,
+    hosirrlib_calcEDC_omni(pData, pData->rirBuf_bnd_sh, pData->edcBufOmn_bnd,
                            pData->nBand, pData->nSamp,
                            RIR_EDC_OMNI_DONE);
-    hosirrlib_calcT60_omni(pData, pData->edcBuf_rir, pData->t60Buf_omni,
+    hosirrlib_calcT60_omni(pData, pData->edcBufOmn_bnd, pData->t60Buf_omni,
                            pData->nBand, pData->nSamp,
                            t60_start_db, t60_span_db,
                            // pData->directOnsetIdx + (int)(pData->fs * directLagSec) // measure after this index
@@ -455,10 +457,10 @@ void hosirrlib_processRIR(
                            T60_OMNI_DONE);
     
     // directional, bandwise EDCs, T60s
-    hosirrlib_calcEDC_beams(pData, pData->rirBuf_beams, pData->edcBuf_rir,
+    hosirrlib_calcEDC_beams(pData, pData->rirBuf_bnd_dir, pData->edcBuf_bnd_dir,
                             pData->nBand, pData->nDir, pData->nSamp,
                             RIR_EDC_DIR_DONE);
-    hosirrlib_calcT60_beams(pData, pData->edcBuf_rir, pData->t60Buf_dir,
+    hosirrlib_calcT60_beams(pData, pData->edcBuf_bnd_dir, pData->t60Buf_dir,
                             pData->nBand, pData->nDir, pData->nSamp,
                             t60_start_db, t60_span_db,
                             // pData->directOnsetIdx + (int)(pData->fs * directLagSec) // measure after this index
@@ -502,7 +504,7 @@ void hosirrlib_setDirectOnsetIndex(
     
     /* absolute values of the omni channel */
     int maxIdx;
-    utility_svabs(&pData->rirBuf[0][0], nSamp, vabs_tmp); // abs(omni)
+    utility_svabs(&pData->rirBuf_sh[0][0], nSamp, vabs_tmp); // abs(omni)
     utility_simaxv(vabs_tmp, nSamp, &maxIdx); // index of max(abs(omni))
     
     /* index of first index above threshold */
@@ -606,7 +608,7 @@ void hosirrlib_setDiffuseOnsetIndex(
     int xyzOrder[4] = {0, 3, 1, 2}; // w y z x -> w x y z
     for(int i = 0; i < nPV; i++) {
         int inChan = xyzOrder[i];
-        memcpy(&pvir[i * lSig], &pData->rirBuf[inChan][0], lSig * sizeof(float));
+        memcpy(&pvir[i * lSig], &pData->rirBuf_sh[inChan][0], lSig * sizeof(float));
     };
     
     /* scale XYZ to normalized velocity */
@@ -907,17 +909,17 @@ void hosirrlib_beamformRIR(
     /* Apply beam weights
         (ref. beamformer_process())
         A: float** encBeamCoeffs;  // nDir  x nSH
-        B: float*** rirBuf_bands;  // nBand x nSH  x nSamp
-        C: float*** rirBuf_beams;  // nBand x nDir x nSamp  */
+        B: float*** rirBuf_bnd_sh;  // nBand x nSH  x nSamp
+        C: float*** rirBuf_bnd_dir;  // nBand x nDir x nSamp  */
     for (int bd = 0; bd < nBand; bd++) {
         cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
                     nDir, nSamp, nSH, 1.0f,
                     (const float*)&pData->decBeamCoeffs[0][0], nSH,         // A, 1st dim of A (row-major)
-                    (const float*)&pData->rirBuf_bands[bd][0][0], nSamp,    // B, 1st dim of B
+                    (const float*)&pData->rirBuf_bnd_sh[bd][0][0], nSamp,    // B, 1st dim of B
                     0.0f,                                                   // beta scalar for C
                     (float*)&beamBuf[bd][0][0], nSamp);                     // C, 1st dim of C
     }
-        
+    
     pData->analysisStage = thisStage;
     free(c_l);
 }
@@ -957,11 +959,11 @@ void hosirrlib_calcEDC_beams(
 }
 
 
-/* Calc bandwise EDCs the omni channel */
+/* Calc bandwise EDCs of the omni channel */
 void hosirrlib_calcEDC_omni(
                             void*    const hHS,
                             float*** const shInBuf, // nband x nsh x nsamp
-                            float*** const edcBuf,  // nband x ndir x nsamp
+                            float**  const edcBuf_omn,  // nband x nsamp
                             const int nBand,
                             const int nSamp,
                             ANALYSIS_STAGE thisStage)
@@ -977,12 +979,12 @@ void hosirrlib_calcEDC_omni(
     
     /* Copy the RIR's omni bands into EDC buffer */
     for (int ib = 0; ib < nBand; ib++) {
-        utility_svvcopy(&shInBuf[ib][0][0], nSamp, &edcBuf[ib][0][0]);
+        utility_svvcopy(&shInBuf[ib][0][0], nSamp, &edcBuf_omn[ib][0]);
     }
     
-    /* EDC, one band at a time */
+    /* Calculate EDC in-place, one band at a time */
     for (int ib = 0; ib < nBand; ib++) {
-        hosirrlib_calcEDC_1ch(&edcBuf[ib][0][0], nSamp);
+        hosirrlib_calcEDC_1ch(&edcBuf_omn[ib][0], nSamp);
     }
     pData->analysisStage = thisStage;
 }
@@ -1075,9 +1077,9 @@ void hosirrlib_calcT60_beams(
  See
  */
 void hosirrlib_calcT60_omni(
-                       void* const hHS,
-                       float*** const edcBuf,
-                       float* const t60Buf,
+                       void*   const hHS,
+                       float** const edcBuf_omn,
+                       float*  const t60Buf,
                        const int nBand,
                        const int nSamp,
                        const float start_db,
@@ -1103,13 +1105,13 @@ void hosirrlib_calcT60_omni(
 
     /* find the start and end points of the measurement */
     for (int bd = 0; bd < nBand; bd++) {
-        hosirrlib_findT60_bounds(&edcBuf[bd][0][0], // omni ch = 0
+        hosirrlib_findT60_bounds(&edcBuf_omn[bd][0], // omni ch = 0
                                  beginIdx, nSamp, start_db, span_db,
                                  &st_end_meas[bd][0]);
     }
     
     for (int ibnd = 0; ibnd < nBand; ibnd++) {
-        hosirrlib_t60_lineFit(&edcBuf[ibnd][0][0], // omni ch = 0
+        hosirrlib_t60_lineFit(&edcBuf_omn[ibnd][0], // omni ch = 0
                               x_slope1, y_edc0m, stage,
                               st_end_meas[ibnd][0], st_end_meas[ibnd][1],
                               pData->fs, &t60Buf[ibnd]);
@@ -1234,14 +1236,15 @@ int hosirrlib_firstIndexGreaterThan(
 }
 
 
-// For the GUI to display the EDCs
-void hosirrlib_copyNormalizedEDCBufs(
+// For the GUI to display the directional EDCs
+// might modify to view bands for debugging
+void hosirrlib_copyNormalizedEDCs_dir(
                                      void* const hHS,
-                                     float** edcOut,
+                                     float** edcOut, // ndir x nsamp
                                      float displayRange)
 {
     /*
-     Note edcBuf_rir are foat*** nband x ndir x nsamp, but dirEDC pointer
+     Note edcBuf_bnd_dir are foat*** nband x ndir x nsamp, but dirEDC pointer
      in the UI is float** ndir x nsamp,
      so for now, just return the first band of each direction
      */
@@ -1250,7 +1253,7 @@ void hosirrlib_copyNormalizedEDCBufs(
     const int nBand = pData->nBand;
     const int nSamp = pData->nSamp;
     const int nDir  = pData->nDir;
-    float*** const edcIn = pData->edcBuf_rir;
+    float*** const edcIn = pData->edcBuf_bnd_dir;
     
     if (pData->analysisStage >= RIR_EDC_DIR_DONE) { // ensure EDCs are rendered
         
@@ -1312,7 +1315,7 @@ void hosirrlib_copyNormalizedEDCBufs(
 //        // Write out band-filtered signals
 //        for(int i = 0; i < pData->nDir; i++) {
 //            memcpy(&edcOut[i][0],                    // copy-to channel
-//                   &(pData->rirBuf_bands[i%nBand][0][0]), // [bnd][ch][smp]
+//                   &(pData->rirBuf_bnd_sh[i%nBand][0][0]), // [bnd][ch][smp]
 //                   nSamp * sizeof(float));
 //        }
 
@@ -1339,7 +1342,7 @@ void hosirrlib_copyNormalizedEDCBufs(
 //        // copy input to output
 //        for(int i = 0; i < pData->nDir; i++)
 //            memcpy(&edcOut[i][0],             // copy-to channel
-//                   &(pData->rirBuf[i][0]),    // [nsh][smp]
+//                   &(pData->rirBuf_sh[i][0]),    // [nsh][smp]
 //                   nSamp * sizeof(float));
 
 //        // THIS WORKS: write out DC values
@@ -1353,7 +1356,7 @@ void hosirrlib_copyNormalizedEDCBufs(
         
 //        // run input channels through band filters and write out
 //        for(int id = 0; id < pData->nDir; id++) {
-//            fftfilt(&pData->rirBuf[id][0],             // input: 1 channel at a time
+//            fftfilt(&pData->rirBuf_sh[id][0],             // input: 1 channel at a time
 //                    &pData->H_bandFilt[id % pData->nBand][0],  // band filter coeffs
 //                    pData->nSamp,                    // input length
 //                    pData->bandFiltOrder + 1,              // filter length
@@ -1362,7 +1365,79 @@ void hosirrlib_copyNormalizedEDCBufs(
 //        }
         
     } else {
-        hosirr_print_error("copyNormalizedEDCBufs: EDC hasn't been rendered so can't copy it out.");
+        hosirr_print_error("copyNormalizedEDCBufs_dir: EDC hasn't been rendered so can't copy it out.");
+    }
+}
+
+
+// For the GUI to display the omni EDCs by band (repeated up to ndir currently for debugging)
+void hosirrlib_copyNormalizedEDCs_omni(
+                                     void* const hHS,
+                                     float** edcOut, // ndir x nsamp
+                                     float displayRange)
+{
+    /*
+     Note edcBuf_bnd_dir are foat*** nband x ndir x nsamp, but dirEDC pointer
+     in the UI is float** ndir x nsamp,
+     so for now, just return the first band of each direction
+     */
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    
+    const int nBand = pData->nBand;
+    const int nSamp = pData->nSamp;
+    const int nDir  = pData->nDir;
+    float** const edcIn = pData->edcBufOmn_bnd;
+    
+    if (pData->analysisStage >= RIR_EDC_DIR_DONE) { // ensure EDCs are rendered
+        
+        /* normalise to range [-1 1] for plotting */
+        float maxVal, minVal, range, add, scale, sub;
+
+        maxVal = edcIn[0][0];        // intializse to first value of first channel
+        
+        int maxBndIdx = 0; // DEBUG vars
+        for (int ib = 0; ib < nBand; ib++) {
+            float val0 = edcIn[ib][0]; // first edc value in each channel
+            if (val0 > maxVal) {
+                maxVal = edcIn[ib][0];
+                maxBndIdx = ib; // DEBUG vars
+            }
+        }
+        // DEBUG
+        printf("\n>> max val found on omni bnd %d: %.2f\n\n", maxBndIdx, maxVal);
+        
+        minVal = maxVal - displayRange; // just display the uper displayRange in dB
+        // check the first and last values of every channel
+        for (int ib = 1; ib < nBand; ib++)
+            if (edcIn[ib][0] > maxVal)
+                maxVal = edcIn[ib][0];
+
+        range = maxVal - minVal;
+        add   = minVal * -1.f;
+        scale = 2.0f/fabsf(range);
+        sub   = 1.f;
+        
+        // DEBUG
+        //printf("max %.1f, min %.1f, rng %.1f, add %.1f, scl %.1f, sub %.1f, ",
+        //       maxVal, minVal, range, add, scale, sub);
+        
+        printf("TEMP: viewing band channels of a single direction"); // DEBUG
+        for(int i = 0; i < nDir; i++) {
+            //int bndIdx = 0; // for just lowest band of all directions
+            int bndIdx = i % nBand; // cycle through the bands of the chIdx
+
+            utility_svsadd(&(edcIn[bndIdx][0]), // [bnd][ch][smp]
+                           &add, nSamp,
+                           &edcOut[i][0]); // [ch][smp]
+            utility_svsmul(&edcOut[i][0],  // [ch][smp]
+                           &scale, nSamp,
+                           &edcOut[i][0]); // [ch][smp]
+            utility_svssub(&edcOut[i][0],  // [ch][smp]
+                           &sub, nSamp,
+                           &edcOut[i][0]); // [ch][smp]
+        }
+    } else {
+        hosirr_print_error("copyNormalizedEDCBufs_omni: EDC hasn't been rendered so can't copy it out.");
     }
 }
 

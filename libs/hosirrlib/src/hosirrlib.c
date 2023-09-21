@@ -1015,9 +1015,7 @@ void hosirrlib_calcEDC_1ch(
     }
 }
 
-/* Calc the gain offset between a source and target EDC
- * Returned value is a scalar pressure gain to be applied to a signal
- */
+/* Calc the gain offset between a source and target EDC */
 float hosirrlib_gainOffset_1ch(
                               float* const srcEDC,
                               float* const targetEDC,
@@ -1035,10 +1033,20 @@ float hosirrlib_gainOffset_1ch(
     float tar_mn = sumf(&targetEDC[startIdx], nSamp_meas) / nSamp_meas;
     float gain_db = tar_mn - src_mn;
     
-    // scalar pressure gain factor
-    return powf(10.f, gain_db / 20.f);
+//     scalar pressure gain factor
+//    return powf(10.f, gain_db / 20.f);
+    return gain_db;
 }
 
+
+/* Directional gain.
+ * The synthesis model assumes a fixed decay for each band for all directions,
+ * so this decay constant comes form analysis of the omni response.
+ * In reality decays will vary by direction, so we approximate this decay rate
+ * variation with a gain variation applied to each directional decay channel
+ * which have identical decay rates. The gain will be matched in the timespan
+ * determine by start_db and span_db.
+ */
 void hosirrlib_calcDirectionalGain(
                                    void*   const hHS,
                                    float** const dirGainBuf, // nBand x nChan
@@ -1060,34 +1068,59 @@ void hosirrlib_calcDirectionalGain(
     const int nDir = pData->nDir;
     const int nSamp = pData->nSamp;
     
+    float* sortedGains = malloc1d(nDir * sizeof(float));
+    
     /* Here the reference for determining the gain is the omni EDC for each
      * band. So an overall energy matching will be needed.
      * An alternative would be to make the directional EDCs the target,
      * and the EDCs of the rendered FDN outputs the sources.
      */
-    float**  const edcTrg = pData->edcBufOmn_bnd;
-    float*** const edcSrc = pData->edcBuf_bnd_dir;
+    float**  const edcOmn_bnd = pData->edcBufOmn_bnd;  // nbnd x nsamp
+    float*** const edcDir_bnd = pData->edcBuf_bnd_dir; // nbnd x ndir x nsamp
     
     /* Store start and end indices of range used for the gain calc for each
      * band, as observed in the omni (target) */
     int** const st_end_meas = (int**)malloc2d(nBand, 2, sizeof(int));
     
     for (int ib = 0; ib < nBand; ib++) {
-        hosirrlib_findDecayBounds(&edcTrg[ib][0],
+        hosirrlib_findDecayBounds(&edcOmn_bnd[ib][0],
                                   beginIdx, nSamp, start_db, span_db,
                                   &st_end_meas[ib][0]);
+        float maxOffset = -500.f;
         for (int id = 0; id < nDir; id++) {
-            dirGainBuf[ib][id] = hosirrlib_gainOffset_1ch(&edcSrc[ib][id][0],
-                                                          &edcTrg[ib][0],
-                                                          st_end_meas[ib][0],
-                                                          st_end_meas[ib][1]);
+            // Note, "target" (omni EDC) is passed as the _source_ argument, so
+            // that the returned gain represents the gain to be applied to
+            // source signals to match the target energy distribution (SHD)
+            float gOffset = hosirrlib_gainOffset_1ch(&edcOmn_bnd[ib][0],
+                                                     &edcDir_bnd[ib][id][0],
+                                                     st_end_meas[ib][0],
+                                                     st_end_meas[ib][1]);
+            dirGainBuf[ib][id] = gOffset;
+            if (gOffset > maxOffset)
+                maxOffset = gOffset;
+        }
+        
+        // TODO: only one method for the gain factor will be used, so
+        // either the sorting or max-finding will be removed accordingly
+        
+        // sort gain offsets to find the median
+        sortf(&dirGainBuf[ib][0], sortedGains, NULL, nDir, 0);
+        
+        float gOffset_med = sortedGains[(int)(nDir/2.f)];
+        // normalize the returned gain within this band so max gain is 0dB and
+        // the rest are attenuated (no boosting)
+        for (int id = 0; id < nDir; id++) {
+            // TODO: could be more rigorous about maintaining an overall energy that matches omni
+            dirGainBuf[ib][id] -= maxOffset; // for max normalization (attenuation only)
+//            dirGainBuf[ib][id] -= gOffset_med; // for median normalization (some gains, some cuts)
             // dbg
-            printf("dirGain: dir %d band %d  %.2f dB\n",
-                   id, ib, 20.f * log10f(dirGainBuf[ib][id]));
+            printf("dirGain: dir %d band %d  %.2f dB\n", id, ib, dirGainBuf[ib][id]);
+            //printf("dirGain: dir %d band %d  %.2f dB\n", id, ib, 20.f * log10f(dirGainBuf[ib][id]));
         }
     }
     
     free(st_end_meas);
+    free(sortedGains);
     pData->analysisStage = thisStage;
 }
 

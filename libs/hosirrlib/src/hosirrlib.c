@@ -86,6 +86,7 @@ void hosirrlib_create(
     /* If diffuseness never crosses this threshold, diffuse onset
      * defaults to direct onset +5ms. */
     pData->diffuseMin = 0.3f;
+    pData->directOnsetFallbackDelay = 0.005;
     
     /* Note: Don't initialize filters yet... input RIR is required for getting
      * the fsfilterbank constants set in _initBandFilters(). */
@@ -451,7 +452,7 @@ void hosirrlib_processRIR(
     hosirrlib_beamformRIR(pData, pData->rirBuf_bnd_sh, pData->rirBuf_bnd_dir, BEAMFORMED);
     
     /* lateStartIdx is the reference point from which t60_start_db is measured,
-     * i.e. it's the nominally start of the late reverb
+     * i.e. it's nominally the start of the late reverb
      */
     const int lateStartIdx = pData->diffuseOnsetIdx;
     // const int lateStartIdx = pData->directOnsetIdx + (int)(pData->fs * directLagSec); // measure after this index;
@@ -773,9 +774,9 @@ void hosirrlib_setDiffuseOnsetIndex(
     
     if (maxVal < pData->diffuseMin) {
         // TODO: better handling of diffuseness fail
-        hosirr_print_warning("Diffuseness didn't exceed the valid threshold.\nFalling back on directOnset +5ms.");
+        hosirr_print_warning("Diffuseness didn't exceed the valid threshold.\nFalling back on directOnset + directOnsetFallbackDelay.");
         printf("diffuseness: %.2f < %.2f\n", maxVal, pData->diffuseMin);
-        diffuseOnsetIdx = pData->directOnsetIdx + (int)(0.005 * fs);
+        diffuseOnsetIdx = pData->directOnsetIdx + (int)(pData->directOnsetFallbackDelay * fs);
     }
     
     pData->diffuseOnsetIdx = diffuseOnsetIdx; // diffuse onset in the sample buffer

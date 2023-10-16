@@ -167,6 +167,7 @@ typedef struct _hosirrlib
     int t0Idx;              // sample index of t0 (can be negative)
     float duration;         // seconds
     float diffuseMin;       // minimum diffuseness to detect onset, otherwise it's direct onset +10ms
+    float directOnsetFallbackDelay; // delay (sec) after direct onset, to substitute calculation of diffuseOnset in case of diffuseness threshold isn't reached.
     
     ANALYSIS_STAGE analysisStage;
     BEAM_TYPES beamType;

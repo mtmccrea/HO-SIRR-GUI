@@ -64,8 +64,10 @@ void hosirrlib_create(
     pData->encBeamCoeffs = NULL;    // nSH x nDir
     pData->decBeamCoeffs = NULL;    // nDir x nSH
     pData->dirGainBuf    = NULL;    // nDir x nBand
-    pData->t60Buf_omni   = NULL;    // nDir x 1
+    pData->t60Buf_omni   = NULL;    // nBand x 1
     pData->t60Buf_dir    = NULL;    // nDir x nBand
+    pData->rdrBuf        = NULL;    // nBand x 1
+    pData->directOnsetIdx_bnd = NULL;    // nBand x 1
     
     // depend on output design (nDir) AND input RIR (nSamp)
     pData->rirBuf_sh        = NULL;    // nSH x nSamp
@@ -154,6 +156,7 @@ void hosirrlib_destroy(
         free(pData->dirGainBuf);
         free(pData->t60Buf_omni);
         free(pData->t60Buf_dir);
+        free(pData->rdrBuf);
         // depend on output design (nDir) AND input RIR (nSamp)
         free(pData->rirBuf_sh);
         free(pData->rirBuf_bnd_sh);
@@ -260,7 +263,7 @@ void hosirrlib_setUninitialized(
     pData->nSamp = -1;
     pData->shOrder = -1;
     pData->fs = -1.f;
-    pData->directOnsetIdx = -1;
+    pData->directOnsetIdx_brdbnd = -1;
     pData->diffuseOnsetIdx = -1;
     pData->diffuseOnsetSec = 0;
     pData->sourceDistance = 3.f; // default
@@ -358,26 +361,26 @@ void hosirrlib_allocProcBufs(
     const int nSamp = pData->nSamp;
 
     // These members depend on output design (nDir) AND input RIR (nSH, nSamp)
-    pData->rirBuf_bnd_sh = (float***)realloc3d((void***)pData->rirBuf_bnd_sh,
-                                             nBand, nSH, nSamp, sizeof(float));
-    pData->rirBuf_bnd_dir = (float***)realloc3d((void***)pData->rirBuf_bnd_dir,
-                                             nBand, nDir, nSamp, sizeof(float));
-    pData->edcBufOmn_bnd   = (float**)realloc2d((void**)pData->edcBufOmn_bnd,
-                                              nBand, nSamp, sizeof(float));
+    pData->rirBuf_bnd_sh    = (float***)realloc3d((void***)pData->rirBuf_bnd_sh,
+                                                  nBand, nSH, nSamp, sizeof(float));
+    pData->rirBuf_bnd_dir   = (float***)realloc3d((void***)pData->rirBuf_bnd_dir,
+                                                  nBand, nDir, nSamp, sizeof(float));
+    pData->edcBufOmn_bnd    = (float**)realloc2d((void**)pData->edcBufOmn_bnd,
+                                                 nBand, nSamp, sizeof(float));
     pData->edcBuf_bnd_dir   = (float***)realloc3d((void***)pData->edcBuf_bnd_dir,
-                                              nBand, nDir, nSamp, sizeof(float));
+                                                  nBand, nDir, nSamp, sizeof(float));
     pData->fdnBuf_dir       = (float**)realloc2d((void**)pData->fdnBuf_dir,
-                                             nDir, nSamp, sizeof(float));
-    pData->fdnBuf_bnd_dir = (float***)realloc3d((void***)pData->fdnBuf_bnd_dir,
-                                             nBand, nDir, nSamp, sizeof(float));
-    pData->edcBufFDN_bnd_dir   = (float***)realloc3d((void***)pData->edcBufFDN_bnd_dir,
-                                              nBand, nDir, nSamp, sizeof(float));
-    pData->fdnBuf_sh   = (float**)realloc2d((void**)pData->fdnBuf_sh,
-                                             nSH, nSamp, sizeof(float));
-    pData->encBeamCoeffs = (float**)realloc2d((void**)pData->encBeamCoeffs,
-                                              nSH, nDir, sizeof(float));
-    pData->decBeamCoeffs = (float**)realloc2d((void**)pData->decBeamCoeffs,
-                                              nDir, nSH, sizeof(float));
+                                                 nDir, nSamp, sizeof(float));
+    pData->fdnBuf_bnd_dir   = (float***)realloc3d((void***)pData->fdnBuf_bnd_dir,
+                                                  nBand, nDir, nSamp, sizeof(float));
+    pData->edcBufFDN_bnd_dir = (float***)realloc3d((void***)pData->edcBufFDN_bnd_dir,
+                                                   nBand, nDir, nSamp, sizeof(float));
+    pData->fdnBuf_sh        = (float**)realloc2d((void**)pData->fdnBuf_sh,
+                                                 nSH, nSamp, sizeof(float));
+    pData->encBeamCoeffs    = (float**)realloc2d((void**)pData->encBeamCoeffs,
+                                                 nSH, nDir, sizeof(float));
+    pData->decBeamCoeffs    = (float**)realloc2d((void**)pData->decBeamCoeffs,
+                                                 nDir, nSH, sizeof(float));
     // (re)allocate buffers that depend only on the number of output channels
     // OPTIM: These could alternatively only be reallocated when the out design
     // changes, but it's not heavy and it's more concise
@@ -385,12 +388,16 @@ void hosirrlib_allocProcBufs(
                                               nBand, nDir, sizeof(float));
     // NOTE: omni t60 is still a 2D array nBand x 1 for compatibility with calcT60()
     pData->t60Buf_omni   = (float*)realloc1d((void*)pData->t60Buf_omni,
-                                              nBand * sizeof(float));
+                                             nBand * sizeof(float));
     pData->t60Buf_dir    = (float**)realloc2d((void**)pData->t60Buf_dir,
                                               nBand, nDir, sizeof(float));
-    
+    pData->rdrBuf        = (float*)realloc1d((void*)pData->rdrBuf,
+                                             nBand * sizeof(float));
+    pData->directOnsetIdx_bnd  = (int*)realloc1d((void*)pData->directOnsetIdx_bnd,
+                                                 nBand * sizeof(int));
     pData->analysisStage = ANALYSIS_BUFS_LOADED;
 }
+
 
 void hosirrlib_renderTMP(
                          void  *  const hHS
@@ -446,10 +453,20 @@ void hosirrlib_processRIR(
     const int nDir = pData->nDir;
     const int nSamp = pData->nSamp;
     
-    hosirrlib_setDirectOnsetIndex(pData, directOnsetThreshDb);
-    hosirrlib_setDiffuseOnsetIndex(pData, diffuseOnsetThresh);
-    hosirrlib_splitBands(pData, pData->rirBuf_sh, pData->rirBuf_bnd_sh, 1, RIR_BANDS_SPLIT);
-    hosirrlib_beamformRIR(pData, pData->rirBuf_bnd_sh, pData->rirBuf_bnd_dir, BEAMFORMED);
+    hosirrlib_setDirectOnsetIndices(pData, &pData->rirBuf_sh[0][0], pData->rirBuf_bnd_sh,
+                                    directOnsetThreshDb,
+                                    DIRECT_ONSETS_FOUND);
+    hosirrlib_setDiffuseOnsetIndex(pData,
+                                   diffuseOnsetThresh,
+                                   DIFFUSENESS_ONSET_FOUND);
+    hosirrlib_splitBands(pData, pData->rirBuf_sh, pData->rirBuf_bnd_sh,
+                         1,
+                         RIR_BANDS_SPLIT);
+    hosirrlib_calcRDR(pData, pData->rirBuf_bnd_sh, pData->rdrBuf,
+                      nBand, nSamp,
+                      RDR_DONE);
+    hosirrlib_beamformRIR(pData, pData->rirBuf_bnd_sh, pData->rirBuf_bnd_dir,
+                          BEAMFORMED);
     
     /* lateStartIdx is the reference point from which t60_start_db is measured,
      * i.e. it's nominally the start of the late reverb
@@ -494,52 +511,93 @@ void hosirrlib_processRIR(
         This would require a second iteration, searching for a local max
         within, say, 2 ms after the onset index.
 */
-void hosirrlib_setDirectOnsetIndex(
-                                   void* const hHS,
-                                   const float thresh_dB
-                                   )
+void hosirrlib_setDirectOnsetIndices(
+                                     void*    const hHS,
+                                     float*   const brdbndBuf,  // 1 x nSamp
+                                     float*** const bndBuf,     // nBand x nSH x nSamp
+                                     const float thresh_dB,
+                                     ANALYSIS_STAGE thisStage
+                                     )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("setDirectOnsetIndex called.\n"); // dbg
+    printf("setDirectOnsetIndices called.\n"); // dbg
     
     /* Check previous stages are complete */
-    if (pData->analysisStage < DIRECT_ONSET_FOUND-1) { // TODO: handle fail case
+    if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
         printf("setDirectOnsetIndes called before previous stages were completed: %d\n", pData->analysisStage);
         return;
     }
     
     const int nSamp = pData->nSamp;
+    const int nBand = pData->nBand;
     const float fs = pData->fs;
     
-    float* vabs_tmp = malloc1d(nSamp * sizeof(float));
+    float * const vabs_tmp = malloc1d(nSamp * sizeof(float));
     
-    /* absolute values of the omni channel */
-    int maxIdx;
-    utility_svabs(&pData->rirBuf_sh[0][0], nSamp, vabs_tmp); // abs(omni)
-    utility_simaxv(vabs_tmp, nSamp, &maxIdx); // index of max(abs(omni))
+//    /* absolute values of the omni channel */
+//    int maxIdx;
+//    utility_svabs(&pData->rirBuf_sh[0][0], nSamp, vabs_tmp); // abs(omni)
+//    utility_simaxv(vabs_tmp, nSamp, &maxIdx); // index of max(abs(omni))
+//
+//    /* index of first index above threshold */
+//    float maxVal = vabs_tmp[maxIdx];
+//    float onsetThresh = maxVal * powf(10.f, thresh_dB / 20.f);
+//    const int directOnsetIdx = hosirrlib_firstIndexGreaterThan(vabs_tmp, 0, nSamp-1, onsetThresh);
     
-    /* index of first index above threshold */
-    float maxVal = vabs_tmp[maxIdx];
-    float onsetThresh = maxVal * powf(10.f, thresh_dB / 20.f);
-    const int directOnsetIdx = hosirrlib_firstIndexGreaterThan(vabs_tmp, 0, nSamp-1, onsetThresh);
+    // t0 set based on omni direct onset
+    int directOnsetIdx = getDirectOnset_1ch(
+                                            brdbndBuf,
+                                            vabs_tmp, thresh_dB, nSamp);
     const float t0 = ((float)directOnsetIdx / fs) - (pData->sourceDistance / 343.f);
-    
-    pData->directOnsetIdx = directOnsetIdx;
-    pData->t0 = t0;
+    pData->directOnsetIdx_brdbnd = HOSIRR_MAX(directOnsetIdx, 0);
+    pData->t0 = t0; // sec
     pData->t0Idx = (int)(t0 * fs); // negative value means t0 is before RIR start time
     
     // dbg
     printf("          t0 index: %d (%.3f sec)\n", pData->t0Idx, t0);
-    printf("direct onset index: %d (%.3f sec)\n", pData->directOnsetIdx, (float)pData->directOnsetIdx / pData->fs);
+    printf("direct onset index: %d (%.3f sec)\n", pData->directOnsetIdx_brdbnd, (float)pData->directOnsetIdx_brdbnd / pData->fs);
+    
+    // bandwise direct onsets
+    for (int ib = 0; ib < nBand; ib++) {
+        directOnsetIdx = getDirectOnset_1ch(
+                                            &bndBuf[ib][0][0], // omni band: nBand x nSH x nSamp
+                                            vabs_tmp, thresh_dB, nSamp);
+        pData->directOnsetIdx_bnd[ib] = HOSIRR_MAX(directOnsetIdx, 0);
+        // dbg
+        printf("direct onset index (f%d): %d (%.3f sec)\n",
+               ib,  pData->directOnsetIdx_bnd[ib], (float)pData->directOnsetIdx_bnd[ib] / pData->fs);
+    }
+    
+    pData->analysisStage = thisStage;
     
     free(vabs_tmp);
-    pData->analysisStage = DIRECT_ONSET_FOUND;
 }
 
+// returns -1 on fail
+int getDirectOnset_1ch(
+                       const float * const chan,
+                       float       * const tmp, // buffer to hold copied channel data
+                       const float thresh_dB,
+                       const int nSamp
+                       )
+{
+    /* absolute values of the omni channel */
+    int maxIdx;
+    utility_svabs(chan, nSamp, tmp); // abs
+    utility_simaxv(tmp, nSamp, &maxIdx); // index of max(abs(omni))
+    
+    /* index of first index above threshold */
+    float maxVal = tmp[maxIdx];
+    float onsetThresh = maxVal * powf(10.f, thresh_dB / 20.f);
+    const int directOnsetIdx = hosirrlib_firstIndexGreaterThan(tmp, 0, nSamp-1, onsetThresh);
+    
+    return directOnsetIdx;
+}
 
 void hosirrlib_setDiffuseOnsetIndex(
                                     void* const hHS,
-                                    const float thresh_fac
+                                    const float thresh_fac,
+                                    ANALYSIS_STAGE thisStage
                                     )
 { /*
    * thresh_fac: threshold (normalized scalar) below the absolute max value in the
@@ -549,7 +607,7 @@ void hosirrlib_setDiffuseOnsetIndex(
     printf("setDiffuseOnsetIndex called.\n"); // dbg
     
     /* Check previous stages are complete */
-    if (pData->analysisStage < DIFFUSENESS_ONSET_FOUND-1) { // TODO: handle fail case
+    if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
         printf("setDiffuseOnsetIndex called before previous stages were completed: %d\n", pData->analysisStage);
         return;
     }
@@ -614,7 +672,7 @@ void hosirrlib_setDiffuseOnsetIndex(
     
     /* make local copy of current Ambi RIR, in WXYZ ordering */
     
-    // NOTE: Assumes ACN-N3D
+    // TODO: Assumes ACN-N3D
     pvir = malloc1d(nPV * lSig * sizeof(float)); // OPTIM: pvir to 2D ptr? (float**)malloc2d(nPV, lSig, sizeof(float));
     int xyzOrder[4] = {0, 3, 1, 2}; // w y z x -> w x y z
     for(int i = 0; i < nPV; i++) {
@@ -750,7 +808,7 @@ void hosirrlib_setDiffuseOnsetIndex(
     // begin search for max diffuseness at the first window containing the
     // direct arrival, where we can expect low diffuseness
     int hopIdx_direct, maxWinIdx;
-    int directIdx_tmp = pData->directOnsetIdx - winsize;
+    int directIdx_tmp = pData->directOnsetIdx_brdbnd - winsize;
     
     if (directIdx_tmp <= 0) {
         hopIdx_direct = 0;
@@ -776,7 +834,7 @@ void hosirrlib_setDiffuseOnsetIndex(
         // TODO: better handling of diffuseness fail
         hosirr_print_warning("Diffuseness didn't exceed the valid threshold.\nFalling back on directOnset + directOnsetFallbackDelay.");
         printf("diffuseness: %.2f < %.2f\n", maxVal, pData->diffuseMin);
-        diffuseOnsetIdx = pData->directOnsetIdx + (int)(pData->directOnsetFallbackDelay * fs);
+        diffuseOnsetIdx = pData->directOnsetIdx_brdbnd + (int)(pData->directOnsetFallbackDelay * fs);
     }
     
     pData->diffuseOnsetIdx = diffuseOnsetIdx; // diffuse onset in the sample buffer
@@ -793,14 +851,14 @@ void hosirrlib_setDiffuseOnsetIndex(
     
     /* Sanity checks */
     // check that time events are properly increasing
-    if ((pData->t0Idx > pData->directOnsetIdx) ||
-        (pData->directOnsetIdx > pData->diffuseOnsetIdx))
+    if ((pData->t0Idx > pData->directOnsetIdx_brdbnd) ||
+        (pData->directOnsetIdx_brdbnd > pData->diffuseOnsetIdx))
         hosirr_print_error("Order of analyzed events isn't valid. Should be t0Idx < directOnsetIdx < diffuseOnsetIdx.");
     // check that diffuse onset (from t0) is positive
     if (pData->diffuseOnsetSec <= 0)
         hosirr_print_error("Diffuse onset is negative");
     
-    pData->analysisStage = DIFFUSENESS_ONSET_FOUND;
+    pData->analysisStage = thisStage;
 
     // Cleanup
     free(pvir);
@@ -875,6 +933,138 @@ void hosirrlib_splitBands(
 }
 
     
+/* Calc bandwise RDR of the omni channel */
+void hosirrlib_calcRDR(
+                       void*    const hHS,
+                       float*** const shInBuf,    // nband x nsh x nsamp
+                       float*   const rdrBuf_omn, // nband x 1
+                       const int nBand,
+                       const int nSamp,
+                       ANALYSIS_STAGE thisStage)
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("calcRDR called.\n"); // dbg
+    
+    /* Check previous stages are complete */
+    if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
+        printf("calcRDR called before previous stages were completed: %d\n", pData->analysisStage);
+        return;
+    }
+    
+//    /* Copy the RIR's omni bands into EDC buffer */
+//    for (int ib = 0; ib < nBand; ib++) {
+//        utility_svvcopy(&shInBuf[ib][0][0], nSamp, &rdrBuf_omn[ib][0]);
+//    }
+    
+    /* MATLAB
+     % Choose a window size for the direct sound energy for this band
+         % winsize = 1 ./ (fc_anlz(ib) ./sqrt(2)); % sec, lower xover of the band
+         winsize = 1 ./ (fc_anlz(ib)); % sec, one cycle
+         winsize = winsize * 2; % scale to n cycles
+         winsize = max(winsize, 0.0025); % at least x ms
+         win_direct = 0:ceil( winsize * fs);
+
+         % Get the bandpassed omni signals
+         omni_bnd = srir_omni_bnd(:,ib); % omni band
+
+         % We use a bandwise omni direct arrival onset
+         directArvl_bnd = getOnset(omni_bnd, db2mag(thresh_peak_db));
+         direct_st      = max(directArvl_bnd - round( winsize * preOnset_winScl * fs), 0);
+         win_direct_idc = direct_st + win_direct;
+         win_direct_idc = win_direct_idc(win_direct_idc > 0);
+
+         % Window of direct sound
+         direct_samps = omni_bnd(win_direct_idc);
+         direct_samps = direct_samps .* (dist_direct/1); % scale by source distance to reference 1m
+         directEnergy = sum( direct_samps.^2);
+
+         % diffuse sound, we use broadband diffuse onset time
+         diffuse_st_smp = max(tMix_data_smp, win_direct_idc(end)+1);
+         % diffuse_st_smp = round(max(tMix_data_smp/2, win_direct_idc(end)+1)); % experiment: cut mixing time in half
+
+         t30_bnd     = (t60_omn_oct(ib) / 2);
+         win_diffuse = 0:round( t30_bnd * fs);
+         % don't let direct and diffuse windows overlap
+         win_diffuse_idc = diffuse_st_smp + win_diffuse;
+         win_diffuse_idc = win_diffuse_idc(win_diffuse_idc <= nSamp); % don't go past eof
+         diffuse_samps = omni_bnd(win_diffuse_idc);
+         diffuseEnergy = sum( diffuse_samps.^2);
+
+         rdr_bnd(ib) = diffuseEnergy / directEnergy;
+         % rdr_bnd(ib) = rdr_bnd(ib) * directivity_fac(ib);
+         rdr_bnd_db(ib) = 10 * log10(rdr_bnd(ib));
+         ddr_bnd_db(ib) = rdr_bnd_db(ib) - 41;
+     */
+    
+    /* Calculate EDC in-place, one band at a time */
+//    for (int ib = 0; ib < nBand; ib++) {
+//        hosirrlib_calcEDC_1ch(&rdrBuf_omn[ib][0], nSamp);
+//    }
+    
+    // TODO: make these function args?
+    const int diffuseOnsetIdx = pData->diffuseOnsetIdx;
+    const float diffuseOnsetSec = pData->diffuseOnsetSec;
+    const int directOnsetIdx = pData->directOnsetIdx_brdbnd;
+    // TODO: make these config constants?
+    const int nCyclePerWin = 2; // size of the direct onset window as multiple of wavelength of band center freq
+    const float minWinSizeSec = 0.0025f; // in case high freq window sizes get too small
+    // where to align the window relative to the direct onset. 0.0 window begins at onset, 0.5 window centered around the onset
+    const float winAlignFac = 0.4f;
+    
+    for (int ib = 0; ib < nBand; ib++) {
+        
+        /* Direct energy */
+
+        float winSizeSec = 1.f / pData->bandCenterFreqs[ib];
+        winSizeSec = winSizeSec * nCyclePerWin;                     // winsize to n cycles
+        winSizeSec = HOSIRR_MAX(winSizeSec, minWinSizeSec);         // clip winsize to at least minWinSizeSec
+        int winSize_direct = (int)(winSizeSec * pData->fs + 0.5f);
+        
+        const int winSize_preOnset = (int)(winSize_direct * winAlignFac);
+        
+        int winStart_direct = directOnsetIdx - winSize_preOnset;
+        if (winStart_direct < 0) {
+            winSize_direct = winSize_direct + winStart_direct;      // window shrinks to maintain alignment with onset
+            winStart_direct = 0;
+        }
+        
+        // window end sample (+1, i.e. exclusive)
+        int winEnd_direct = winStart_direct + winSize_direct;
+        if (winEnd_direct > nSamp)
+            winEnd_direct = nSamp;
+        
+        double sum_directEnergy = 0.f;
+        for (int is = winStart_direct; is < winEnd_direct; is++) {
+            // omni energy from this band
+            sum_directEnergy += shInBuf[ib][0][is] * shInBuf[ib][0][is];
+        }
+        
+        /* Diffuse energy */
+        
+        // Diffuse energy measured up to T30 time after the diffuse onset to
+        // avoid noise floor
+        float t30 = pData->t60Buf_omni[ib] * 0.5f;
+        int winSize_diffuse  = (int)(t30 * pData->fs);
+        int winStart_diffuse = HOSIRR_MAX(diffuseOnsetIdx, winEnd_direct);
+        // window end sample (+1, i.e. exclusive)
+        int winEnd_diff      = HOSIRR_MIN(winStart_diffuse + winSize_diffuse, nSamp);
+        
+        double sum_diffuseEnergy = 0.f;
+        for (int is = winStart_diffuse; is < winEnd_diff; is++) {
+            sum_directEnergy += shInBuf[ib][0][is] * shInBuf[ib][0][is]; // omni energy from this band
+        }
+        
+        // We use a bandwise omni direct arrival onset
+        // Window of direct sound
+        // diffuse sound, we use broadband diffuse onset time
+        // RDR
+        
+    }
+        
+    pData->analysisStage = thisStage;
+}
+
+
 void hosirrlib_beamformRIR(
                            void*    const hHS,
                            float*** const inBuf,
@@ -1001,6 +1191,7 @@ void hosirrlib_calcEDC_omni(
 }
 
 
+
 /* Calc EDC of a single channel
  Note: in-place operation, so copy data into edcBuf before calling.
  OPTIM: vectorize
@@ -1106,8 +1297,8 @@ void hosirrlib_calcDirectionalGain(
         
         // sort gain offsets to find the median
         sortf(&dirGainBuf[ib][0], sortedGains, NULL, nDir, 0);
-        
         float gOffset_med = sortedGains[(int)(nDir/2.f)];
+        
         // normalize the returned gain within this band so max gain is 0dB and
         // the rest are attenuated (no boosting)
         for (int id = 0; id < nDir; id++) {
@@ -1115,7 +1306,7 @@ void hosirrlib_calcDirectionalGain(
             dirGainBuf[ib][id] -= maxOffset; // for max normalization (attenuation only)
 //            dirGainBuf[ib][id] -= gOffset_med; // for median normalization (some gains, some cuts)
             // dbg
-            printf("dirGain: dir %d band %d  %.2f dB\n", id, ib, dirGainBuf[ib][id]);
+            //printf("dirGain: dir %d band %d  %.2f dB\n", id, ib, dirGainBuf[ib][id]);
             //printf("dirGain: dir %d band %d  %.2f dB\n", id, ib, 20.f * log10f(dirGainBuf[ib][id]));
         }
     }
@@ -1179,7 +1370,7 @@ void hosirrlib_calcT60_beams(
                                                       st_end_meas[ibnd][ich][0], st_end_meas[ibnd][ich][1],
                                                       pData->fs);
             // dbg
-            printf("t60: dir %d band %d  %.2f sec\n", ich, ibnd, t60Buf[ibnd][ich]);
+            //printf("t60: dir %d band %d  %.2f sec\n", ich, ibnd, t60Buf[ibnd][ich]);
         }
     }
         

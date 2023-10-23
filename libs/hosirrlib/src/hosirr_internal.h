@@ -134,11 +134,13 @@ typedef struct _hosirrlib
     /* new hodecaylib */
     
     // depend only on nDir
-    float** encBeamCoeffs;  // nSH x nDir
-    float** decBeamCoeffs;  // nDir x nSH
-    float** dirGainBuf;     // nBand x nDir
-    float*  t60Buf_omni;    // nBand x 1
-    float** t60Buf_dir;     // nBand x nDir
+    float** encBeamCoeffs;      // nSH x nDir
+    float** decBeamCoeffs;      // nDir x nSH
+    float** dirGainBuf;         // nBand x nDir
+    float*  t60Buf_omni;        // nBand x 1
+    float** t60Buf_dir;         // nBand x nDir
+    float*  rdrBuf;             // nBand x 1
+    int*    directOnsetIdx_bnd; // nBand x 1
     
     // depend on output design (nDir) AND input RIR (nSamp)
     float**  rirBuf_sh;         // nSH x nSamp (input RIR)
@@ -159,7 +161,7 @@ typedef struct _hosirrlib
     int nSH, nSamp, shOrder; // input vars
     float fs;
     int nDir, nBand, bandFiltOrder; // analysis vars
-    int directOnsetIdx;     // direct arrival onset index within the input RIR
+    int directOnsetIdx_brdbnd;     // direct arrival onset index within the input RIR
     int diffuseOnsetIdx;    // diffuse onset sample index within the input RIR
     float diffuseOnsetSec;  // diffuse onset from t0, in seconds
     float sourceDistance;   // source->receiver distance

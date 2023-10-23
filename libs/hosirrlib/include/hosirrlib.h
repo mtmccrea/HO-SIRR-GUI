@@ -188,9 +188,10 @@ typedef enum {
     RIR_LOADED,             /**< RIR is read into member buffer */
     FILTERS_INTITIALIZED,   /**< Filterbank is initialized */
     ANALYSIS_BUFS_LOADED,   /**< Staging buffers for intermediate processing are loaded */
-    DIRECT_ONSET_FOUND,     /**< First arrival  position is found */
-    DIFFUSENESS_ONSET_FOUND,/**< T60s are calculated for each beam/band */
     RIR_BANDS_SPLIT,        /**< RIR is split into bands */
+    DIRECT_ONSETS_FOUND,    /**< First arrival  position is found */
+    DIFFUSENESS_ONSET_FOUND,/**< T60s are calculated for each beam/band */
+    RDR_DONE,               /**< RDR is calculated for each band (omni) */
     BEAMFORMED,             /**< SHD signal has been beamformed into directional signals (by band)  */
     RIR_EDC_OMNI_DONE,      /**< EDCs are calculated for each band of the omni channel */
     T60_OMNI_DONE,          /**< T60s are calculated for each band of the omni channel */
@@ -265,34 +266,59 @@ void hosirrlib_render(void* const hHS);
 /* ========================================================================== */
 
 /* Create */
-void hosirrlib_initBandFilters(void* const hHS);
+void hosirrlib_initBandFilters(
+                               void* const hHS);
 
 /* Set RIR, init resources */
-int hosirrlib_setRIR(void* const hHS,
+int hosirrlib_setRIR(
+                     void* const hHS,
                      const float** H,
                      int numChannels,
                      int numSamples,
                      int sampleRate);
-void hosirrlib_setUninitialized(void* const hHS);
-void hosirrlib_allocProcBufs(void * const hHS);
+void hosirrlib_setUninitialized(
+                                void* const hHS);
+void hosirrlib_allocProcBufs(
+                             void * const hHS);
 
 /* Proccess RIR */
-void hosirrlib_processRIR(void* const hHS);
-void hosirrlib_setDirectOnsetIndex(void* const hHS, const float thresh_dB);
-void hosirrlib_setDiffuseOnsetIndex(void* const hHS, const float thresh_fac);
-
-void hosirrlib_splitBands(void* const hHS, float** const inBuf, float*** const bndBuf,
+void hosirrlib_processRIR(
+                          void* const hHS);
+void hosirrlib_splitBands(
+                          void* const hHS, float** const inBuf, float*** const bndBuf,
                           int removeFiltDelayFLAG, ANALYSIS_STAGE thisStage);
-void hosirrlib_beamformRIR(void* const hHS, float*** const inBuf, float*** const beamBuf,
+void hosirrlib_setDirectOnsetIndices(
+                                     void*    const hHS,
+                                     float*   const brdbndBuf,
+                                     float*** const bndBuf,
+                                     const float thresh_dB,
+                                     ANALYSIS_STAGE thisStage);
+void hosirrlib_setDiffuseOnsetIndex(
+                                    void* const hHS,
+                                    const float thresh_fac,
+                                    ANALYSIS_STAGE thisStage);
+void hosirrlib_calcRDR(
+                       void*    const hHS,
+                       float*** const shInBuf,    // nband x nsh x nsamp
+                       float*   const rdrBuf_omn, // nband x 1
+                       const int nBand,
+                       const int nSamp,
+                       ANALYSIS_STAGE thisStage);
+void hosirrlib_beamformRIR(
+                           void* const hHS, float*** const inBuf, float*** const beamBuf,
                            ANALYSIS_STAGE thisStage);
-void hosirrlib_calcEDC_beams(void* const hHS, float*** const beamBuf, float*** const edcBuf,
+void hosirrlib_calcEDC_beams(
+                             void* const hHS, float*** const beamBuf, float*** const edcBuf,
                              const int nBand, const int nDir, const int nSamp, ANALYSIS_STAGE thisStage);
-void hosirrlib_calcEDC_omni(void* const hHS, float*** const shInBuf, float** const edcBuf_omn,
+void hosirrlib_calcEDC_omni(
+                            void* const hHS, float*** const shInBuf, float** const edcBuf_omn,
                             const int nBand, const int nSamp, ANALYSIS_STAGE thisStage);
-void hosirrlib_calcT60_beams(void* const hHS, float*** const edcBuf, float** const t60Buf,
+void hosirrlib_calcT60_beams(
+                             void* const hHS, float*** const edcBuf, float** const t60Buf,
                              const int nBand, const int nDir, const int nSamp,
                              const float startDb, const float spanDb, const int beginIdx, ANALYSIS_STAGE thisStage);
-void hosirrlib_calcT60_omni(void* const hHS, float** const edcBuf_omn, float* const t60Buf,
+void hosirrlib_calcT60_omni(
+                            void* const hHS, float** const edcBuf_omn, float* const t60Buf,
                             const int nBand, const int nSamp,
                             const float startDb, const float spanDb, const int beginIdx, ANALYSIS_STAGE thisStage);
 void hosirrlib_calcDirectionalGain(
@@ -304,7 +330,14 @@ void hosirrlib_calcDirectionalGain(
                                    ANALYSIS_STAGE thisStage);
 
 /* Helpers */
-void hosirrlib_calcEDC_1ch(float* const dataBuf, const int nSamp);
+int getDirectOnset_1ch(
+                       const float * const chan,
+                       float       * const tmp, // buffer to hold copied channel data
+                       const float thresh_dB,
+                       const int nSamp);
+void hosirrlib_calcEDC_1ch(
+                           float* const dataBuf,
+                           const int nSamp);
 float hosirrlib_gainOffset_1ch(
                               float* const srcEDC,
                               float* const targetEDC,
@@ -323,12 +356,27 @@ float hosirrlib_T60_lineFit(float* const edcBuf,
                             const int startIdx,
                             const int endIdx,
                             const float fs);
-int hosirrlib_firstIndexLessThan(float* vec, int startIdx, int endIdx, float thresh);
-int hosirrlib_firstIndexGreaterThan(float* vec, int startIdx, int endIdx, float thresh);
+int hosirrlib_firstIndexLessThan(
+                                 float* vec,
+                                 int startIdx,
+                                 int endIdx,
+                                 float thresh);
+int hosirrlib_firstIndexGreaterThan(
+                                    float* vec,
+                                    int startIdx,
+                                    int endIdx,
+                                    float thresh);
 
-void hosirrlib_renderTMP(void* const hHS);
-void hosirrlib_copyNormalizedEDCs_dir(void* const hHS, float** edcCopy, float displayRange);
-void hosirrlib_copyNormalizedEDCs_omni(void* const hHS, float** edcCopy, float displayRange);
+void hosirrlib_renderTMP(
+                         void* const hHS);
+void hosirrlib_copyNormalizedEDCs_dir(
+                                      void* const hHS,
+                                      float** edcCopy,
+                                      float displayRange);
+void hosirrlib_copyNormalizedEDCs_omni(
+                                       void* const hHS,
+                                       float** edcCopy,
+                                       float displayRange);
 
 /* Getters */
 int hosirrlib_getNumDirections(void* const hHS);

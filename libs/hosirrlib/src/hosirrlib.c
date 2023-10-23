@@ -192,7 +192,7 @@ int hosirrlib_setRIR(
                      )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("setRIR called\n");
+    printf("\nsetRIR called\n");
     
     /* Check channel count to see if input is actually in the SHD */
     if (fabsf(sqrtf((float)numChannels) - floorf(sqrtf((float)numChannels))) > 0.0001f) {
@@ -257,7 +257,7 @@ void hosirrlib_setUninitialized(
                                 )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("setUninitialized called.\n"); // dbg
+    printf("\nsetUninitialized called.\n"); // dbg
     // pending initializations
     pData->nSH = -1; // input vars (assume for now in params = out params)
     pData->nSamp = -1;
@@ -279,7 +279,7 @@ void hosirrlib_initBandFilters(
                                )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("initBandFilters called.\n"); // dbg
+    printf("\ninitBandFilters called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < FILTERS_INTITIALIZED-1) { // TODO: handle fail case
@@ -348,7 +348,7 @@ void hosirrlib_allocProcBufs(
                              )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("allocProcBufs called\n");
+    printf("\nallocProcBufs called\n");
     /* Check previous stages are complete */
     if (pData->analysisStage < ANALYSIS_BUFS_LOADED-1) { // TODO: handle fail case
         printf("allocProcBufs called before previous stages were completed: %d\n", pData->analysisStage);
@@ -404,7 +404,7 @@ void hosirrlib_renderTMP(
                          )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("hosirrlib_renderTMP called.\n"); // dbg
+    printf("\nrenderTMP called.\n"); // dbg
     /* Check if processing should actually go-ahead */
     if(pData->ambiRIR_status != AMBI_RIR_STATUS_LOADED ||
        pData->lsRIR_status == LS_RIR_STATUS_RENDERED ||
@@ -428,7 +428,7 @@ void hosirrlib_processRIR(
                           )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("processRIR called.\n"); // dbg
+    printf("\nprocessRIR called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < ANALYSIS_BUFS_LOADED-1) { // TODO: handle fail case
@@ -440,7 +440,7 @@ void hosirrlib_processRIR(
     // lag after direct onset to start measurement
     const float directLagSec = 0.005f; // sec
     // direct arrival onset threashold (dB below omni peak)
-    const float directOnsetThreshDb = -6.f;
+    const float directOnsetThreshDb = -3.f;
     // diffuse onset threashold (normalized scalar below diffuseness peak)
     const float diffuseOnsetThresh = 0.707f;
     // starting level of t60 measurement (<= 0)
@@ -453,18 +453,18 @@ void hosirrlib_processRIR(
     const int nDir = pData->nDir;
     const int nSamp = pData->nSamp;
     
-    hosirrlib_setDirectOnsetIndices(pData, &pData->rirBuf_sh[0][0], pData->rirBuf_bnd_sh,
-                                    directOnsetThreshDb,
-                                    DIRECT_ONSETS_FOUND);
-    hosirrlib_setDiffuseOnsetIndex(pData,
-                                   diffuseOnsetThresh,
-                                   DIFFUSENESS_ONSET_FOUND);
     hosirrlib_splitBands(pData, pData->rirBuf_sh, pData->rirBuf_bnd_sh,
                          1,
                          RIR_BANDS_SPLIT);
-    hosirrlib_calcRDR(pData, pData->rirBuf_bnd_sh, pData->rdrBuf,
-                      nBand, nSamp,
-                      RDR_DONE);
+    // Requires: split bands
+    hosirrlib_setDirectOnsetIndices(pData, &pData->rirBuf_sh[0][0], pData->rirBuf_bnd_sh,
+                                    directOnsetThreshDb,
+                                    DIRECT_ONSETS_FOUND);
+    // Requires: split bands
+    hosirrlib_setDiffuseOnsetIndex(pData,
+                                   diffuseOnsetThresh,
+                                   DIFFUSENESS_ONSET_FOUND);
+    // Requires: split bands,
     hosirrlib_beamformRIR(pData, pData->rirBuf_bnd_sh, pData->rirBuf_bnd_dir,
                           BEAMFORMED);
     
@@ -482,6 +482,12 @@ void hosirrlib_processRIR(
                            nBand, nSamp,
                            t60_start_db, t60_span_db, lateStartIdx,
                            T60_OMNI_DONE);
+    
+    // Requires: split bands, bandwise direct onsets, omni broadband diffuse onset, bandwise omni T60s
+    hosirrlib_calcRDR(pData, pData->rirBuf_bnd_sh, pData->rdrBuf,
+                      nBand, nSamp,
+                      RDR_DONE);
+
     
     // directional, bandwise EDCs, T60s
     hosirrlib_calcEDC_beams(pData, pData->rirBuf_bnd_dir, pData->edcBuf_bnd_dir,
@@ -520,11 +526,11 @@ void hosirrlib_setDirectOnsetIndices(
                                      )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("setDirectOnsetIndices called.\n"); // dbg
+    printf("\nsetDirectOnsetIndices called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
-        printf("setDirectOnsetIndes called before previous stages were completed: %d\n", pData->analysisStage);
+        printf("setDirectOnsetIndices called before previous stages were completed: %d\n", pData->analysisStage);
         return;
     }
     
@@ -554,8 +560,8 @@ void hosirrlib_setDirectOnsetIndices(
     pData->t0Idx = (int)(t0 * fs); // negative value means t0 is before RIR start time
     
     // dbg
-    printf("          t0 index: %d (%.3f sec)\n", pData->t0Idx, t0);
-    printf("direct onset index: %d (%.3f sec)\n", pData->directOnsetIdx_brdbnd, (float)pData->directOnsetIdx_brdbnd / pData->fs);
+    printf("          t0 index: %d\t(%.4f sec)\n", pData->t0Idx, t0);
+    printf("direct onset index: %d\t(%.4f sec)\n", pData->directOnsetIdx_brdbnd, (float)pData->directOnsetIdx_brdbnd / pData->fs);
     
     // bandwise direct onsets
     for (int ib = 0; ib < nBand; ib++) {
@@ -564,7 +570,7 @@ void hosirrlib_setDirectOnsetIndices(
                                             vabs_tmp, thresh_dB, nSamp);
         pData->directOnsetIdx_bnd[ib] = HOSIRR_MAX(directOnsetIdx, 0);
         // dbg
-        printf("direct onset index (f%d): %d (%.3f sec)\n",
+        printf("direct onset index (f%d): %d\t(%.4f sec)\n",
                ib,  pData->directOnsetIdx_bnd[ib], (float)pData->directOnsetIdx_bnd[ib] / pData->fs);
     }
     
@@ -604,7 +610,7 @@ void hosirrlib_setDiffuseOnsetIndex(
    *            buffer, above which the onset is considered to have occured.
    */
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("setDiffuseOnsetIndex called.\n"); // dbg
+    printf("\nsetDiffuseOnsetIndex called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
@@ -887,7 +893,7 @@ void hosirrlib_splitBands(
  */
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("splitBands called.\n"); // dbg
+    printf("\nsplitBands called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
@@ -936,14 +942,14 @@ void hosirrlib_splitBands(
 /* Calc bandwise RDR of the omni channel */
 void hosirrlib_calcRDR(
                        void*    const hHS,
-                       float*** const shInBuf,    // nband x nsh x nsamp
-                       float*   const rdrBuf_omn, // nband x 1
+                       float*** const shInBuf,  // nband x nsh x nsamp
+                       float*   const rdrBuf,   // nband x 1
                        const int nBand,
                        const int nSamp,
                        ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("calcRDR called.\n"); // dbg
+    printf("\ncalcRDR called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
@@ -996,15 +1002,10 @@ void hosirrlib_calcRDR(
          ddr_bnd_db(ib) = rdr_bnd_db(ib) - 41;
      */
     
-    /* Calculate EDC in-place, one band at a time */
-//    for (int ib = 0; ib < nBand; ib++) {
-//        hosirrlib_calcEDC_1ch(&rdrBuf_omn[ib][0], nSamp);
-//    }
-    
     // TODO: make these function args?
     const int diffuseOnsetIdx = pData->diffuseOnsetIdx;
     const float diffuseOnsetSec = pData->diffuseOnsetSec;
-    const int directOnsetIdx = pData->directOnsetIdx_brdbnd;
+    
     // TODO: make these config constants?
     const int nCyclePerWin = 2; // size of the direct onset window as multiple of wavelength of band center freq
     const float minWinSizeSec = 0.0025f; // in case high freq window sizes get too small
@@ -1022,21 +1023,22 @@ void hosirrlib_calcRDR(
         
         const int winSize_preOnset = (int)(winSize_direct * winAlignFac);
         
-        int winStart_direct = directOnsetIdx - winSize_preOnset;
+        int winStart_direct = pData->directOnsetIdx_bnd[ib] - winSize_preOnset;
         if (winStart_direct < 0) {
+            printf("! Clipping direct window [%d], windowStart: %d \n", ib, winStart_direct);
             winSize_direct = winSize_direct + winStart_direct;      // window shrinks to maintain alignment with onset
             winStart_direct = 0;
         }
         
-        // window end sample (+1, i.e. exclusive)
+        // window end sample (exclusive)
         int winEnd_direct = winStart_direct + winSize_direct;
         if (winEnd_direct > nSamp)
             winEnd_direct = nSamp;
         
-        double sum_directEnergy = 0.f;
+        double directEnergy_sum = 0.f;
         for (int is = winStart_direct; is < winEnd_direct; is++) {
             // omni energy from this band
-            sum_directEnergy += shInBuf[ib][0][is] * shInBuf[ib][0][is];
+            directEnergy_sum += shInBuf[ib][0][is] * shInBuf[ib][0][is];
         }
         
         /* Diffuse energy */
@@ -1046,13 +1048,25 @@ void hosirrlib_calcRDR(
         float t30 = pData->t60Buf_omni[ib] * 0.5f;
         int winSize_diffuse  = (int)(t30 * pData->fs);
         int winStart_diffuse = HOSIRR_MAX(diffuseOnsetIdx, winEnd_direct);
-        // window end sample (+1, i.e. exclusive)
-        int winEnd_diff      = HOSIRR_MIN(winStart_diffuse + winSize_diffuse, nSamp);
+        // window end sample (exclusive)
+        int winEnd_diffuse   = HOSIRR_MIN(winStart_diffuse + winSize_diffuse, nSamp);
         
-        double sum_diffuseEnergy = 0.f;
-        for (int is = winStart_diffuse; is < winEnd_diff; is++) {
-            sum_directEnergy += shInBuf[ib][0][is] * shInBuf[ib][0][is]; // omni energy from this band
+        double diffuseEnergy_sum = 0.f;
+        for (int is = winStart_diffuse; is < winEnd_diffuse; is++) {
+            diffuseEnergy_sum += shInBuf[ib][0][is] * shInBuf[ib][0][is]; // omni energy from this band
         }
+        
+        /* DDR / RDR */
+        
+        pData->rdrBuf[ib] = diffuseEnergy_sum / directEnergy_sum;
+//        rdrBuf[ib] = directivity_fac[ib] * diffuseEnergy_sum / directEnergy_sum;
+
+        //        ddr_bnd_db(ib) = rdr_bnd_db(ib) - 41;
+        
+        //dbg
+        printf("  direct winsize [%d]: %d (%.1f ms)\n", ib, winEnd_direct - winStart_direct, (winEnd_direct - winStart_direct)/pData->fs*1000);
+        printf(" diffuse winsize [%d]: %d (%.1f ms)\n", ib, winEnd_diffuse - winStart_diffuse, (winEnd_diffuse - winStart_diffuse)/pData->fs*1000);
+        printf("             rdr [%d]: %.1f (%.1f dB)\n", ib, pData->rdrBuf[ib], 10 * log10f(pData->rdrBuf[ib]));
         
         // We use a bandwise omni direct arrival onset
         // Window of direct sound
@@ -1072,7 +1086,7 @@ void hosirrlib_beamformRIR(
                            ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("beamformRIR called.\n"); // dbg
+    printf("\nbeamformRIR called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
@@ -1137,7 +1151,7 @@ void hosirrlib_calcEDC_beams(
                        ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("calcEDC_beams called.\n"); // dbg
+    printf("\ncalcEDC_beams called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
@@ -1170,7 +1184,7 @@ void hosirrlib_calcEDC_omni(
                             ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("calcEDC_omni called.\n"); // dbg
+    printf("\ncalcEDC_omni called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
@@ -1248,7 +1262,7 @@ void hosirrlib_calcDirectionalGain(
                                    ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("calcDirectionalGain called.\n"); // dbg
+    printf("\ncalcDirectionalGain called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
@@ -1338,7 +1352,7 @@ void hosirrlib_calcT60_beams(
                        ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("calcT60_beams called.\n"); // dbg
+    printf("\ncalcT60_beams called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < thisStage-1) { // TODO: handle fail case
@@ -1396,7 +1410,7 @@ void hosirrlib_calcT60_omni(
                             ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("calcT60_omni called.\n"); // dbg
+    printf("\ncalcT60_omni called.\n"); // dbg
     
     /* Check previous stages are complete */
     if (pData->analysisStage < thisStage-1) { // TODO: handle fail case

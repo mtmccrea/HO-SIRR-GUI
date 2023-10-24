@@ -88,7 +88,14 @@ void hosirrlib_create(
     /* If diffuseness never crosses this threshold, diffuse onset
      * defaults to direct onset +5ms. */
     pData->diffuseMin = 0.3f;
-    pData->directOnsetFallbackDelay = 0.005;
+    pData->diffuseOnsetFallbackDelay = 0.005;
+    
+    /* Defaults */
+    for (int i = 0; i < 3; i++) {
+        pData->srcPosition[i] = 0.f;
+        pData->recPosition[i] = 0.f;
+    }
+    pData->srcPosition[0] = 3.f; // source defaults to 1 m in front of receiver // TODO: update default
     
     /* Note: Don't initialize filters yet... input RIR is required for getting
      * the fsfilterbank constants set in _initBandFilters(). */
@@ -251,6 +258,47 @@ int hosirrlib_setRIR(
     return (int)(pData->ambiRIR_status); // TODO: consider use of returned value
 }
 
+void hosirrlib_setSrcPosition(
+                             void* const hHS,
+                             const float x, const float y, const float z
+                             )
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("\nsetSrcPosition\n");
+    float * sPos = pData->srcPosition;
+    sPos[0] = x;
+    sPos[1] = y;
+    sPos[2] = z;
+}
+
+void hosirrlib_setRecPosition(
+                             void* const hHS,
+                             const float x, const float y, const float z
+                             )
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("\nsetRecPosition\n");
+    float * rPos = pData->recPosition;
+    rPos[0] = x;
+    rPos[1] = y;
+    rPos[2] = z;
+}
+
+float hosirrlib_getSrcRecDistance(
+                                  void* const hHS
+                                  )
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    printf("\ngetSrcRecDistance\n");
+    float * rPos = pData->recPosition;
+    float * sPos = pData->srcPosition;
+    float sqDiff[3];
+    for (int i = 0; i < 3; i++) {
+        float diff = sPos[i] - rPos[i];
+        sqDiff[i] = diff * diff;
+    }
+    return sqrtf(sumf(sqDiff, 3));
+}
 
 void hosirrlib_setUninitialized(
                                 void* const hHS
@@ -266,7 +314,6 @@ void hosirrlib_setUninitialized(
     pData->directOnsetIdx_brdbnd = -1;
     pData->diffuseOnsetIdx = -1;
     pData->diffuseOnsetSec = 0;
-    pData->sourceDistance = 3.f; // default
     pData->t0 = -1;
     pData->t0Idx = 0;
     pData->duration = 0.0f;
@@ -525,23 +572,14 @@ void hosirrlib_setDirectOnsetIndices(
     const int nBand = pData->nBand;
     const float fs = pData->fs;
     
+    /* Buffer to store signal absolute values (1ch at a time) */
     float * const vabs_tmp = malloc1d(nSamp * sizeof(float));
-    
-//    /* absolute values of the omni channel */
-//    int maxIdx;
-//    utility_svabs(&pData->rirBuf_sh[0][0], nSamp, vabs_tmp); // abs(omni)
-//    utility_simaxv(vabs_tmp, nSamp, &maxIdx); // index of max(abs(omni))
-//
-//    /* index of first index above threshold */
-//    float maxVal = vabs_tmp[maxIdx];
-//    float onsetThresh = maxVal * powf(10.f, thresh_dB / 20.f);
-//    const int directOnsetIdx = hosirrlib_firstIndexGreaterThan(vabs_tmp, 0, nSamp-1, onsetThresh);
-    
-    // t0 set based on omni direct onset
-    int directOnsetIdx = getDirectOnset_1ch(
-                                            brdbndBuf,
+        
+    /* T0: set based on broadband direct onset */
+    int directOnsetIdx = getDirectOnset_1ch(brdbndBuf,
                                             vabs_tmp, thresh_dB, nSamp);
-    const float t0 = ((float)directOnsetIdx / fs) - (pData->sourceDistance / 343.f);
+    const float srcRecDist = hosirrlib_getSrcRecDistance(hHS);
+    const float t0 = ((float)directOnsetIdx / fs) - (srcRecDist / 343.f);
     pData->directOnsetIdx_brdbnd = HOSIRR_MAX(directOnsetIdx, 0);
     pData->t0 = t0; // sec
     pData->t0Idx = (int)(t0 * fs); // negative value means t0 is before RIR start time
@@ -549,20 +587,20 @@ void hosirrlib_setDirectOnsetIndices(
     // dbg
     printf("          t0 index: %d\t(%.4f sec)\n", pData->t0Idx, t0);
     printf("direct onset index: %d\t(%.4f sec)\n", pData->directOnsetIdx_brdbnd, (float)pData->directOnsetIdx_brdbnd / pData->fs);
+    printf("src->rec dist: %.3f m\n", srcRecDist);
     
-    // bandwise direct onsets
+    /* Bandwise direct onsets */
     for (int ib = 0; ib < nBand; ib++) {
-        directOnsetIdx = getDirectOnset_1ch(
-                                            &bndBuf[ib][0][0], // omni band: nBand x nSH x nSamp
+        directOnsetIdx = getDirectOnset_1ch(&bndBuf[ib][0][0], // omni band: nBand x nSH x nSamp
                                             vabs_tmp, thresh_dB, nSamp);
         pData->directOnsetIdx_bnd[ib] = HOSIRR_MAX(directOnsetIdx, 0);
+        
         // dbg
         printf("direct onset index (f%d): %d\t(%.4f sec)\n",
                ib,  pData->directOnsetIdx_bnd[ib], (float)pData->directOnsetIdx_bnd[ib] / pData->fs);
     }
     
     pData->analysisStage = thisStage;
-    
     free(vabs_tmp);
 }
 
@@ -574,12 +612,12 @@ int getDirectOnset_1ch(
                        const int nSamp
                        )
 {
-    /* absolute values of the omni channel */
+    /* Absolute values of the omni channel */
     int maxIdx;
     utility_svabs(chan, nSamp, tmp); // abs
     utility_simaxv(tmp, nSamp, &maxIdx); // index of max(abs(omni))
     
-    /* index of first index above threshold */
+    /* Index of first index above threshold */
     float maxVal = tmp[maxIdx];
     float onsetThresh = maxVal * powf(10.f, thresh_dB / 20.f);
     const int directOnsetIdx = hosirrlib_firstIndexGreaterThan(tmp, 0, nSamp-1, onsetThresh);
@@ -824,7 +862,7 @@ void hosirrlib_setDiffuseOnsetIndex(
     if (maxVal < pData->diffuseMin) {
         hosirr_print_warning("Diffuseness didn't exceed the valid threshold.\nFalling back on directOnset + directOnsetFallbackDelay.");
         printf("diffuseness: %.2f < %.2f\n", maxVal, pData->diffuseMin); // dbg
-        diffuseOnsetIdx = pData->directOnsetIdx_brdbnd + (int)(pData->directOnsetFallbackDelay * fs);
+        diffuseOnsetIdx = pData->directOnsetIdx_brdbnd + (int)(pData->diffuseOnsetFallbackDelay * fs);
     }
     // Diffuse onset sample index in the _input buffer_
     pData->diffuseOnsetIdx = diffuseOnsetIdx;
@@ -995,6 +1033,7 @@ void hosirrlib_calcRDR(
     const float minWinSizeSec = 0.0025f; // in case high freq window sizes get too small
     // where to align the window relative to the direct onset. 0.0 window begins at onset, 0.5 window centered around the onset
     const float winAlignFac = 0.4f;
+    const float srcRecDist = HOSIRR_MAX(hosirrlib_getSrcRecDistance(hHS), 0.25);
     
     for (int ib = 0; ib < nBand; ib++) {
         
@@ -1021,8 +1060,9 @@ void hosirrlib_calcRDR(
         
         double directEnergy_sum = 0.f;
         for (int is = winStart_direct; is < winEnd_direct; is++) {
-            // omni energy from this band
-            directEnergy_sum += shInBuf[ib][0][is] * shInBuf[ib][0][is];
+            // omni pressure from this band, scaled to bring source to 1m
+            float directPress = shInBuf[ib][0][is] * srcRecDist;
+            directEnergy_sum += directPress * directPress;
         }
         
         /* Diffuse energy */
@@ -1031,8 +1071,8 @@ void hosirrlib_calcRDR(
         // avoid noise floor
         float t30 = pData->t60Buf_omni[ib] * 0.5f;
         int winSize_diffuse  = (int)(t30 * pData->fs);
+        // window start (inclusive) and end (exclusive) sample
         int winStart_diffuse = HOSIRR_MAX(diffuseOnsetIdx, winEnd_direct);
-        // window end sample (exclusive)
         int winEnd_diffuse   = HOSIRR_MIN(winStart_diffuse + winSize_diffuse, nSamp);
         
         double diffuseEnergy_sum = 0.f;
@@ -1040,23 +1080,19 @@ void hosirrlib_calcRDR(
             diffuseEnergy_sum += shInBuf[ib][0][is] * shInBuf[ib][0][is]; // omni energy from this band
         }
         
-        /* DDR / RDR */
+        /* RDR */
         
+        // Source directivity not accounted for (assumed omni)
+        // For DDR: ddr_bnd_db(ib) = rdr_bnd_db(ib) - 41;
         pData->rdrBuf[ib] = diffuseEnergy_sum / directEnergy_sum;
-//        rdrBuf[ib] = directivity_fac[ib] * diffuseEnergy_sum / directEnergy_sum;
-
-        //        ddr_bnd_db(ib) = rdr_bnd_db(ib) - 41;
         
         //dbg
-        printf("  direct winsize [%d]: %d (%.1f ms)\n", ib, winEnd_direct - winStart_direct, (winEnd_direct - winStart_direct)/pData->fs*1000);
-        printf(" diffuse winsize [%d]: %d (%.1f ms)\n", ib, winEnd_diffuse - winStart_diffuse, (winEnd_diffuse - winStart_diffuse)/pData->fs*1000);
-        printf("             rdr [%d]: %.1f (%.1f dB)\n", ib, pData->rdrBuf[ib], 10 * log10f(pData->rdrBuf[ib]));
-        
-        // We use a bandwise omni direct arrival onset
-        // Window of direct sound
-        // diffuse sound, we use broadband diffuse onset time
-        // RDR
-        
+        printf("   diff / dir sum [%d]: %.5f / %.5f)\n", ib, diffuseEnergy_sum, directEnergy_sum);
+        printf("              rdr [%d]: %.1f (%.1f dB)\n", ib, pData->rdrBuf[ib], 10 * log10f(pData->rdrBuf[ib]));
+//        printf("  direct st/en : size [%d]: %d / %d : %d\n", ib, winStart_direct, winEnd_direct, winEnd_direct-winStart_direct);
+//        printf("  direct winsize [%d]: %d (%.1f ms)\n", ib, winEnd_direct - winStart_direct, (winEnd_direct - winStart_direct)/pData->fs*1000);
+//        printf("   diffuse start [%d]: %d (%.1f ms)\n", ib, winStart_diffuse, winStart_diffuse/pData->fs*1000);
+//        printf(" diffuse winsize [%d]: %d (%.1f ms)\n", ib, winEnd_diffuse - winStart_diffuse, (winEnd_diffuse - winStart_diffuse)/pData->fs*1000);
     }
         
     pData->analysisStage = thisStage;

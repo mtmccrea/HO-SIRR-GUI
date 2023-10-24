@@ -366,7 +366,17 @@ int hosirrlib_firstIndexGreaterThan(
                                     int startIdx,
                                     int endIdx,
                                     float thresh);
-
+void hosirrlib_setSrcPosition(
+                              void* const hHS,
+                              const float x, const float y, const float z
+                              );
+void hosirrlib_setRecPosition(
+                              void* const hHS,
+                              const float x, const float y, const float z
+                              );
+float hosirrlib_getSrcRecDistance(
+                                  void* const hHS
+                                  );
 void hosirrlib_renderTMP(
                          void* const hHS);
 void hosirrlib_copyNormalizedEDCs_dir(

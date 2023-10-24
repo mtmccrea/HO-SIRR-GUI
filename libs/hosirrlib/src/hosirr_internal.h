@@ -153,23 +153,23 @@ typedef struct _hosirrlib
     float*** edcBufFDN_bnd_dir; // nBand x nDir x nSamp
     float**  fdnBuf_sh;         // nSH x nSamp (output RIR)
     
-    float**  H_bandFilt;      // nBand x bandFiltOrder + 1
-    float*   bandCenterFreqs; // size should match nBand.
-    float*   bandXOverFreqs;  // 1 x nBand-1
+    float**  H_bandFilt;        // nBand x bandFiltOrder + 1
+    float*   bandCenterFreqs;   // size should match nBand.
+    float*   bandXOverFreqs;    // 1 x nBand-1
+    float    srcPosition[3];    // [X, Y, Z], used for src-rec distance calc
+    float    recPosition[3];    // [X, Y, Z]
     
-    
-    int nSH, nSamp, shOrder; // input vars
+    int nSH, nSamp, shOrder;
     float fs;
-    int nDir, nBand, bandFiltOrder; // analysis vars
-    int directOnsetIdx_brdbnd;     // direct arrival onset index within the input RIR
-    int diffuseOnsetIdx;    // diffuse onset sample index within the input RIR
-    float diffuseOnsetSec;  // diffuse onset from t0, in seconds
-    float sourceDistance;   // source->receiver distance
-    float t0;               // time-0: when the sound leaves the source (directOnset - sourceDistance/343)
-    int t0Idx;              // sample index of t0 (can be negative)
-    float duration;         // seconds
-    float diffuseMin;       // minimum diffuseness to detect onset, otherwise it's direct onset +10ms
-    float directOnsetFallbackDelay; // delay (sec) after direct onset, to substitute calculation of diffuseOnset in case of diffuseness threshold isn't reached.
+    int nDir, nBand, bandFiltOrder;
+    int directOnsetIdx_brdbnd;  // direct arrival onset index within the input RIR
+    int diffuseOnsetIdx;        // diffuse onset sample index within the input RIR
+    float diffuseOnsetSec;      // diffuse onset from t0, in seconds
+    float t0;                   // time-0: when the sound leaves the source (directOnset - sourceDistance/343)
+    int t0Idx;                  // sample index of t0 (can be negative)
+    float duration;             // seconds
+    float diffuseMin;           // minimum diffuseness to detect onset, otherwise it's direct onset +10ms
+    float diffuseOnsetFallbackDelay; // delay (sec) after direct onset, to substitute calculation of diffuseOnset in case of diffuseness threshold isn't reached.
     
     ANALYSIS_STAGE analysisStage;
     BEAM_TYPES beamType;

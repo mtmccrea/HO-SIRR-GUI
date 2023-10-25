@@ -266,8 +266,6 @@ void hosirrlib_render(void* const hHS);
 /* ========================================================================== */
 
 /* Create */
-void hosirrlib_initBandFilters(
-                               void* const hHS);
 
 /* Set RIR, init resources */
 int hosirrlib_setRIR(
@@ -276,17 +274,21 @@ int hosirrlib_setRIR(
                      int numChannels,
                      int numSamples,
                      int sampleRate);
+void hosirrlib_initBandFilters(
+                               void* const hHS,
+                               ANALYSIS_STAGE thisStage);
+void hosirrlib_allocProcBufs(
+                             void * const hHS,
+                             ANALYSIS_STAGE thisStage);
 void hosirrlib_setUninitialized(
                                 void* const hHS);
-void hosirrlib_allocProcBufs(
-                             void * const hHS);
 
 /* Proccess RIR */
 void hosirrlib_processRIR(
                           void* const hHS);
 void hosirrlib_splitBands(
                           void* const hHS, float** const inBuf, float*** const bndBuf,
-                          int removeFiltDelayFLAG, ANALYSIS_STAGE thisStage);
+                          int removeFiltDelay, ANALYSIS_STAGE thisStage);
 void hosirrlib_setDirectOnsetIndices(
                                      void*    const hHS,
                                      float*   const brdbndBuf,
@@ -296,13 +298,17 @@ void hosirrlib_setDirectOnsetIndices(
 void hosirrlib_setDiffuseOnsetIndex(
                                     void* const hHS,
                                     const float thresh_fac,
+                                    const int nWin_smooth,
                                     ANALYSIS_STAGE thisStage);
 void hosirrlib_calcRDR(
                        void*    const hHS,
                        float*** const shInBuf,    // nband x nsh x nsamp
                        float*   const rdrBuf_omn, // nband x 1
-                       const int nBand,
-                       const int nSamp,
+                       const    int nBand,
+                       const    int nSamp,
+                       const    int diffuseOnsetIdx,
+                       int *    const directOnsetIdx_bnd, // bandwise direct onsets
+                       float *  const t60Buf_omni,
                        ANALYSIS_STAGE thisStage);
 void hosirrlib_beamformRIR(
                            void* const hHS, float*** const inBuf, float*** const beamBuf,
@@ -321,7 +327,7 @@ void hosirrlib_calcT60_omni(
                             void* const hHS, float** const edcBuf_omn, float* const t60Buf,
                             const int nBand, const int nSamp,
                             const float startDb, const float spanDb, const int beginIdx, ANALYSIS_STAGE thisStage);
-void hosirrlib_calcDirectionalGain(
+void hosirrlib_calcDirectionalGainDB(
                                    void*   const hHS,
                                    float** const dirGainBuf, // nBand x nChan
                                    const float start_db,
@@ -338,7 +344,7 @@ int getDirectOnset_1ch(
 void hosirrlib_calcEDC_1ch(
                            float* const dataBuf,
                            const int nSamp);
-float hosirrlib_gainOffset_1ch(
+float hosirrlib_gainOffsetDB_1ch(
                               float* const srcEDC,
                               float* const targetEDC,
                               const int startIdx,
@@ -368,15 +374,17 @@ int hosirrlib_firstIndexGreaterThan(
                                     float thresh);
 void hosirrlib_setSrcPosition(
                               void* const hHS,
-                              const float x, const float y, const float z
+                              const float x,
+                              const float y,
+                              const float z
                               );
 void hosirrlib_setRecPosition(
                               void* const hHS,
-                              const float x, const float y, const float z
-                              );
+                              const float x,
+                              const float y,
+                              const float z);
 float hosirrlib_getSrcRecDistance(
-                                  void* const hHS
-                                  );
+                                  void* const hHS);
 void hosirrlib_renderTMP(
                          void* const hHS);
 void hosirrlib_copyNormalizedEDCs_dir(

@@ -136,7 +136,7 @@ typedef struct _hosirrlib
     // depend only on nDir
     float** encBeamCoeffs;      // nSH x nDir
     float** decBeamCoeffs;      // nDir x nSH
-    float** dirGainBuf;         // nBand x nDir
+    float** dirGainBufDB;       // nBand x nDir
     float*  t60Buf_omni;        // nBand x 1
     float** t60Buf_dir;         // nBand x nDir
     float*  rdrBuf;             // nBand x 1
@@ -176,8 +176,8 @@ typedef struct _hosirrlib
     
     /* original hosirrlib */
     
-    float** shir;           // input SRIR [nSH x length]
-    float* lsir;            // output LSIR [nLoudpkrs x length]
+    float** shir;               // input SRIR [nSH x length]
+    float* lsir;                // output LSIR [nLoudpkrs x length]
         
     /* Misc. */
     int ambiRIRorder;
@@ -189,13 +189,13 @@ typedef struct _hosirrlib
     
     /* user parameters */
     int analysisOrder;
-    int nLoudpkrs;         /* number of loudspeakers/virtual loudspeakers */
+    int nLoudpkrs;              // number of loudspeakers/virtual loudspeakers
     int windowLength;
     float wetDryBalance;
     int broadBandFirstPeakFLAG;
     float loudpkrs_dirs_deg[MAX_NUM_LOUDSPEAKERS][2];
-    CH_ORDERING chOrdering;   /* only ACN is supported */
-    NORMALIZATION_TYPES norm;       /* N3D or SN3D */
+    CH_ORDERING chOrdering;     // only ACN is supported
+    NORMALIZATION_TYPES norm;   // N3D or SN3D
 
 } hosirrlib_data;
 

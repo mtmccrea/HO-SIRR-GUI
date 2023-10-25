@@ -1,52 +1,12 @@
 /*
- ==============================================================================
- 
- This file is part of HOSIRR
- Copyright (c) 2020 - Leo McCormack
- 
- HOSIRR is free software: you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
- 
- HOSIRR is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
- 
- You should have received a copy of the GNU General Public License
- along with HOSIRR.  If not, see <http://www.gnu.org/licenses/>.
- 
- ==============================================================================
- */
-
-/**
- * @file hosirr_internal.h
- * @brief A C-port of the Higher-order Spatial Impulse Response Rendering
- *        (HO-SIRR) Matlab toolbox: https://github.com/leomccormack/HO-SIRR
  *
- * HO-SIRR is a rendering method, which can synthesise output loudspeaker array
- * room impulse responses (RIRs) using input spherical harmonic (Ambisonic/
- * B-Format) RIRs of arbitrary order. The method makes assumptions regarding
- * the composition of the sound-field and extracts spatial parameters over time,
- * which allows it to map the input to the output in an adaptive and informed
- * manner.
- *
- * The idea is that you then convolve a monophonic source with this loudspeaker
- * array RIR, and it will be reproduced and exhibit the spatial characteristics
- * of the captured space more faithfully (when compared to linear methods such
- * as Ambisonics).
- *
- * Dependencies: Spatial_Audio_Framework
+ * This library depends on
+ * Spatial_Audio_Framework
  * (https://github.com/leomccormack/Spatial_Audio_Framework)
+ * and follows the structure of HOSIRR, by the same author.
  *
- * @see [1] McCormack, L., Politis, A., Scheuregger, O., and Pulkki, V. (2019).
- *          "Higher-order processing of spatial impulse responses". In
- *          Proceedings of the 23rd International Congress on Acoustics, 9--13
- *          September 2019 in Aachen, Germany.
+ * Michael McCrea, Tampere Univeristy, 26.10.23
  *
- * @author Leo McCormack
- * @date 04.01.2020
  */
 
 #ifndef __HOSIRR_INTERNAL_H_INCLUDED__
@@ -136,7 +96,7 @@ typedef struct _hosirrlib
     // depend only on nDir
     float** encBeamCoeffs;      // nSH x nDir
     float** decBeamCoeffs;      // nDir x nSH
-    float** dirGainBuf;         // nBand x nDir
+    float** dirGainBufDB;       // nBand x nDir
     float*  t60Buf_omni;        // nBand x 1
     float** t60Buf_dir;         // nBand x nDir
     float*  rdrBuf;             // nBand x 1
@@ -176,8 +136,8 @@ typedef struct _hosirrlib
     
     /* original hosirrlib */
     
-    float** shir;           // input SRIR [nSH x length]
-    float* lsir;            // output LSIR [nLoudpkrs x length]
+    float** shir;               // input SRIR [nSH x length]
+    float* lsir;                // output LSIR [nLoudpkrs x length]
         
     /* Misc. */
     int ambiRIRorder;
@@ -189,13 +149,13 @@ typedef struct _hosirrlib
     
     /* user parameters */
     int analysisOrder;
-    int nLoudpkrs;         /* number of loudspeakers/virtual loudspeakers */
+    int nLoudpkrs;              // number of loudspeakers/virtual loudspeakers
     int windowLength;
     float wetDryBalance;
     int broadBandFirstPeakFLAG;
     float loudpkrs_dirs_deg[MAX_NUM_LOUDSPEAKERS][2];
-    CH_ORDERING chOrdering;   /* only ACN is supported */
-    NORMALIZATION_TYPES norm;       /* N3D or SN3D */
+    CH_ORDERING chOrdering;     // only ACN is supported
+    NORMALIZATION_TYPES norm;   // N3D or SN3D
 
 } hosirrlib_data;
 

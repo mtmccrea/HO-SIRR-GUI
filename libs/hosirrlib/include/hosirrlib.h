@@ -1,52 +1,12 @@
 /*
- ==============================================================================
- 
- This file is part of HOSIRR
- Copyright (c) 2020 - Leo McCormack
- 
- HOSIRR is free software: you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
- 
- HOSIRR is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
- 
- You should have received a copy of the GNU General Public License
- along with HOSIRR.  If not, see <http://www.gnu.org/licenses/>.
- 
- ==============================================================================
- */
-
-/**
- * @file hosirrlib.h
- * @brief A C-port of the Higher-order Spatial Impulse Response Rendering
- *        (HO-SIRR) Matlab toolbox: https://github.com/leomccormack/HO-SIRR
  *
- * HO-SIRR is a rendering method, which can synthesise output loudspeaker array
- * room impulse responses (RIRs) using input spherical harmonic (Ambisonic/
- * B-Format) RIRs of arbitrary order. The method makes assumptions regarding
- * the composition of the sound-field and extracts spatial parameters over time,
- * which allows it to map the input to the output in an adaptive and informed
- * manner.
- *
- * The idea is that you then convolve a monophonic source with this loudspeaker
- * array RIR, and it will be reproduced and exhibit the spatial characteristics
- * of the captured space more faithfully (when compared to linear methods such
- * as Ambisonics).
- *
- * Dependencies: Spatial_Audio_Framework
+ * This library depends on
+ * Spatial_Audio_Framework
  * (https://github.com/leomccormack/Spatial_Audio_Framework)
+ * and follows the structure of HOSIRR, by the same author.
  *
- * @see [1] McCormack, L., Politis, A., Scheuregger, O., and Pulkki, V. (2019).
- *          "Higher-order processing of spatial impulse responses". In
- *          Proceedings of the 23rd International Congress on Acoustics, 9--13
- *          September 2019 in Aachen, Germany.
+ * Michael McCrea, Tampere Univeristy, 26.10.23
  *
- * @author Leo McCormack
- * @date 04.01.2020
  */
 
 #ifndef __HOSIRRLIB_H_INCLUDED__
@@ -266,8 +226,6 @@ void hosirrlib_render(void* const hHS);
 /* ========================================================================== */
 
 /* Create */
-void hosirrlib_initBandFilters(
-                               void* const hHS);
 
 /* Set RIR, init resources */
 int hosirrlib_setRIR(
@@ -276,69 +234,102 @@ int hosirrlib_setRIR(
                      int numChannels,
                      int numSamples,
                      int sampleRate);
+void hosirrlib_initBandFilters(
+                               void* const hHS,
+                               ANALYSIS_STAGE thisStage);
+void hosirrlib_allocProcBufs(
+                             void * const hHS,
+                             ANALYSIS_STAGE thisStage);
 void hosirrlib_setUninitialized(
                                 void* const hHS);
-void hosirrlib_allocProcBufs(
-                             void * const hHS);
-
-/* Proccess RIR */
 void hosirrlib_processRIR(
                           void* const hHS);
 void hosirrlib_splitBands(
-                          void* const hHS, float** const inBuf, float*** const bndBuf,
-                          int removeFiltDelayFLAG, ANALYSIS_STAGE thisStage);
+                          void* const hHS,
+                          float** const inBuf,
+                          float*** const bndBuf,
+                          int removeFiltDelay,
+                          ANALYSIS_STAGE thisStage);
 void hosirrlib_setDirectOnsetIndices(
-                                     void*    const hHS,
-                                     float*   const brdbndBuf,
+                                     void* const hHS,
+                                     float* const brdbndBuf,
                                      float*** const bndBuf,
                                      const float thresh_dB,
                                      ANALYSIS_STAGE thisStage);
 void hosirrlib_setDiffuseOnsetIndex(
                                     void* const hHS,
                                     const float thresh_fac,
+                                    const int nWin_smooth,
                                     ANALYSIS_STAGE thisStage);
 void hosirrlib_calcRDR(
-                       void*    const hHS,
-                       float*** const shInBuf,    // nband x nsh x nsamp
-                       float*   const rdrBuf_omn, // nband x 1
+                       void* const hHS,
+                       float*** const shInBuf,          // nband x nsh x nsamp
+                       float* const rdrBuf_omn,         // nband x 1
                        const int nBand,
                        const int nSamp,
+                       const int diffuseOnsetIdx,
+                       int * const directOnsetIdx_bnd,  // bandwise direct onsets
+                       float *  const t60Buf_omni,
                        ANALYSIS_STAGE thisStage);
 void hosirrlib_beamformRIR(
-                           void* const hHS, float*** const inBuf, float*** const beamBuf,
+                           void* const hHS,
+                           float*** const inBuf,
+                           float*** const beamBuf,
                            ANALYSIS_STAGE thisStage);
 void hosirrlib_calcEDC_beams(
-                             void* const hHS, float*** const beamBuf, float*** const edcBuf,
-                             const int nBand, const int nDir, const int nSamp, ANALYSIS_STAGE thisStage);
+                             void* const hHS,
+                             float*** const beamBuf,
+                             float*** const edcBuf,
+                             const int nBand,
+                             const int nDir,
+                             const int nSamp,
+                             ANALYSIS_STAGE thisStage);
 void hosirrlib_calcEDC_omni(
-                            void* const hHS, float*** const shInBuf, float** const edcBuf_omn,
-                            const int nBand, const int nSamp, ANALYSIS_STAGE thisStage);
+                            void* const hHS,
+                            float*** const shInBuf,
+                            float** const edcBuf_omn,
+                            const int nBand,
+                            const int nSamp,
+                            ANALYSIS_STAGE thisStage);
 void hosirrlib_calcT60_beams(
-                             void* const hHS, float*** const edcBuf, float** const t60Buf,
-                             const int nBand, const int nDir, const int nSamp,
-                             const float startDb, const float spanDb, const int beginIdx, ANALYSIS_STAGE thisStage);
+                             void* const hHS,
+                             float*** const edcBuf,
+                             float** const t60Buf,
+                             const int nBand,
+                             const int nDir,
+                             const int nSamp,
+                             const float startDb,
+                             const float spanDb,
+                             const int beginIdx,
+                             ANALYSIS_STAGE thisStage);
 void hosirrlib_calcT60_omni(
-                            void* const hHS, float** const edcBuf_omn, float* const t60Buf,
-                            const int nBand, const int nSamp,
-                            const float startDb, const float spanDb, const int beginIdx, ANALYSIS_STAGE thisStage);
-void hosirrlib_calcDirectionalGain(
-                                   void*   const hHS,
+                            void* const hHS,
+                            float** const edcBuf_omn,
+                            float* const t60Buf,
+                            const int nBand,
+                            const int nSamp,
+                            const float startDb,
+                            const float spanDb,
+                            const int beginIdx,
+                            ANALYSIS_STAGE thisStage);
+void hosirrlib_calcDirectionalGainDB(
+                                   void* const hHS,
                                    float** const dirGainBuf, // nBand x nChan
                                    const float start_db,
                                    const float span_db,
                                    const int beginIdx,
                                    ANALYSIS_STAGE thisStage);
-
 /* Helpers */
+
 int getDirectOnset_1ch(
                        const float * const chan,
-                       float       * const tmp, // buffer to hold copied channel data
+                       float * const tmp, // buffer to hold copied channel data
                        const float thresh_dB,
                        const int nSamp);
 void hosirrlib_calcEDC_1ch(
                            float* const dataBuf,
                            const int nSamp);
-float hosirrlib_gainOffset_1ch(
+float hosirrlib_gainOffsetDB_1ch(
                               float* const srcEDC,
                               float* const targetEDC,
                               const int startIdx,
@@ -368,15 +359,17 @@ int hosirrlib_firstIndexGreaterThan(
                                     float thresh);
 void hosirrlib_setSrcPosition(
                               void* const hHS,
-                              const float x, const float y, const float z
+                              const float x,
+                              const float y,
+                              const float z
                               );
 void hosirrlib_setRecPosition(
                               void* const hHS,
-                              const float x, const float y, const float z
-                              );
+                              const float x,
+                              const float y,
+                              const float z);
 float hosirrlib_getSrcRecDistance(
-                                  void* const hHS
-                                  );
+                                  void* const hHS);
 void hosirrlib_renderTMP(
                          void* const hHS);
 void hosirrlib_copyNormalizedEDCs_dir(
@@ -389,10 +382,12 @@ void hosirrlib_copyNormalizedEDCs_omni(
                                        float displayRange);
 
 /* Getters */
-int hosirrlib_getNumDirections(void* const hHS);
 
-// DEBUG FUNC
-//void hosirrlib_inspectFilts(void* const hHS);
+int hosirrlib_getNumDirections(
+                               void* const hHS);
+
+/* Debug  func */
+// void hosirrlib_inspectFilts(void* const hHS);
 
 /**
  * Sets a flag, as to whether the renderer should isolate the first peak in the

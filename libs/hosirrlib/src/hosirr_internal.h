@@ -116,6 +116,7 @@ typedef struct _hosirrlib
     float**  H_bandFilt;        // nBand x bandFiltOrder + 1
     float*   bandCenterFreqs;   // size should match nBand.
     float*   bandXOverFreqs;    // 1 x nBand-1
+    float*   srcDirectivity;    // 1 x nBand
     float    srcPosition[3];    // [X, Y, Z], used for src-rec distance calc
     float    recPosition[3];    // [X, Y, Z]
     
@@ -130,6 +131,7 @@ typedef struct _hosirrlib
     float duration;             // seconds
     float diffuseMin;           // minimum diffuseness to detect onset, otherwise it's direct onset +10ms
     float diffuseOnsetFallbackDelay; // delay (sec) after direct onset, to substitute calculation of diffuseOnset in case of diffuseness threshold isn't reached.
+    int srcDirectivityFlag;     // boolean: 0: omni, 1: "regular" loudspeaker directivity
     
     ANALYSIS_STAGE analysisStage;
     BEAM_TYPES beamType;

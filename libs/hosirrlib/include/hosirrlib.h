@@ -234,16 +234,17 @@ int hosirrlib_setRIR(
                      int numChannels,
                      int numSamples,
                      int sampleRate);
-void hosirrlib_initBandFilters(
-                               void* const hHS,
-                               ANALYSIS_STAGE thisStage);
+void hosirrlib_initBandProcessing(
+                                  void* const hHS,
+                                  ANALYSIS_STAGE thisStage);
 void hosirrlib_allocProcBufs(
                              void * const hHS,
                              ANALYSIS_STAGE thisStage);
 void hosirrlib_setUninitialized(
                                 void* const hHS);
 void hosirrlib_processRIR(
-                          void* const hHS);
+                          void* const hHS,
+                          ANALYSIS_STAGE endStage);
 void hosirrlib_splitBands(
                           void* const hHS,
                           float** const inBuf,
@@ -270,6 +271,7 @@ void hosirrlib_calcRDR(
                        const int diffuseOnsetIdx,
                        int * const directOnsetIdx_bnd,  // bandwise direct onsets
                        float *  const t60Buf_omni,
+                       const int srcDirectivityFlag,       // 0: omni, 1: "regular" loudspeaker
                        ANALYSIS_STAGE thisStage);
 void hosirrlib_beamformRIR(
                            void* const hHS,

@@ -148,14 +148,14 @@ typedef enum {
     RIR_LOADED,             /**< RIR is read into member buffer */
     FILTERS_INTITIALIZED,   /**< Filterbank is initialized */
     ANALYSIS_BUFS_LOADED,   /**< Staging buffers for intermediate processing are loaded */
-    RIR_BANDS_SPLIT,        /**< RIR is split into bands */
+    BANDS_SPLIT,            /**< RIR is split into bands */
     DIRECT_ONSETS_FOUND,    /**< First arrival  position is found */
     DIFFUSENESS_ONSET_FOUND,/**< T60s are calculated for each beam/band */
-    RIR_EDC_OMNI_DONE,      /**< EDCs are calculated for each band of the omni channel */
+    EDC_OMNI_DONE,          /**< EDCs are calculated for each band of the omni channel */
     T60_OMNI_DONE,          /**< T60s are calculated for each band of the omni channel */
     RDR_DONE,               /**< RDR is calculated for each band (omni) */
     BEAMFORMED,             /**< SHD signal has been beamformed into directional signals (by band)  */
-    RIR_EDC_DIR_DONE,       /**< EDCs are calculated for each beam/band */
+    EDC_DIR_DONE,           /**< EDCs are calculated for each beam/band */
     T60_DIR_DONE,           /**< T60s are calculated for each beam/band */
 //    RIR_PROCESSED,          /**< RIR has been fully processed and ready for FDN synthesis */
 //    FDN_BANDS_SPLIT,        /**< FDN is split into bands */

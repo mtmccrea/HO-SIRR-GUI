@@ -337,13 +337,14 @@ void hosirrlib_initBandProcessing(
                                                pData->bandFiltOrder + 1,
                                                sizeof(float));
         // Compute FIR Filterbank coefficients
-        FIRFilterbank(pData->bandFiltOrder,
-                      pData->bandXOverFreqs,
-                      pData->nBand-1,
-                      pData->fs,
-                      WINDOWING_FUNCTION_HAMMING,
-                      1,
-                      FLATTEN2D(pData->H_bandFilt));
+        // FIRFilterbank(pData->bandFiltOrder, // SAF version (bug at current linked version)
+        hosirrlib_FIRFilterbank(pData->bandFiltOrder, // patched version
+                                pData->bandXOverFreqs,
+                                pData->nBand-1,
+                                pData->fs,
+                                WINDOWING_FUNCTION_HAMMING,
+                                1,
+                                FLATTEN2D(pData->H_bandFilt));
         
         printf("FS FOR FILTERBANK\n\t%.1f\n", pData->fs); // dbg
     }
@@ -467,7 +468,7 @@ void hosirrlib_processRIR(
     
     hosirrlib_splitBands(pData, pData->rirBuf_sh, pData->rirBuf_bnd_sh,
                          1,
-                         RIR_BANDS_SPLIT);
+                         BANDS_SPLIT);
     if (pData->analysisStage+1 > endStage) return;
     
     hosirrlib_setDirectOnsetIndices(pData, &pData->rirBuf_sh[0][0], pData->rirBuf_bnd_sh,
@@ -483,7 +484,7 @@ void hosirrlib_processRIR(
     
     hosirrlib_calcEDC_omni(pData, pData->rirBuf_bnd_sh, pData->edcBufOmn_bnd,
                            nBand, nSamp,
-                           RIR_EDC_OMNI_DONE);
+                           EDC_OMNI_DONE);
     if (pData->analysisStage+1 > endStage) return;
     
     hosirrlib_calcT60_omni(pData, pData->edcBufOmn_bnd, pData->t60Buf_omni,
@@ -510,7 +511,7 @@ void hosirrlib_processRIR(
     
     hosirrlib_calcEDC_beams(pData, pData->rirBuf_bnd_dir, pData->edcBuf_bnd_dir,
                             nBand, nDir, nSamp,
-                            RIR_EDC_DIR_DONE);
+                            EDC_DIR_DONE);
     if (pData->analysisStage+1 > endStage) return;
     
     hosirrlib_calcT60_beams(pData, pData->edcBuf_bnd_dir, pData->t60Buf_dir,
@@ -556,15 +557,17 @@ void hosirrlib_setDirectOnsetIndices(
     
     /* Buffer to store signal absolute values (1ch at a time) */
     float * const vabs_tmp = malloc1d(nSamp * sizeof(float));
-        
-    /* T0: set based on broadband direct onset */
-    int directOnsetIdx = getDirectOnset_1ch(brdbndBuf,
-                                            vabs_tmp, thresh_dB, nSamp);
+    
     const float srcRecDist = hosirrlib_getSrcRecDistance(hHS);
+    int directOnsetIdx = getDirectOnset_1ch(brdbndBuf, vabs_tmp, thresh_dB, nSamp);
+    
+    /* T0: set based on broadband direct onset */
     const float t0 = ((float)directOnsetIdx / fs) - (srcRecDist / 343.f);
     pData->directOnsetIdx_brdbnd = HOSIRR_MAX(directOnsetIdx, 0);
     pData->t0 = t0; // sec
-    pData->t0Idx = (int)(t0 * fs); // negative value means t0 is before RIR start time (RIR can be trimmed ahead of the direct arrival)
+    // A negative t0Idx means t0 is before RIR start time
+    // (RIR can be trimmed ahead of the direct arrival)
+    pData->t0Idx = (int)(t0 * fs);
     
     // dbg
     printf("          t0 index: %d\t(%.4f sec)\n", pData->t0Idx, t0);
@@ -576,10 +579,7 @@ void hosirrlib_setDirectOnsetIndices(
         directOnsetIdx = getDirectOnset_1ch(&bndBuf[ib][0][0], // omni band: nBand x nSH x nSamp
                                             vabs_tmp, thresh_dB, nSamp);
         pData->directOnsetIdx_bnd[ib] = HOSIRR_MAX(directOnsetIdx, 0);
-        
-        // dbg
-        printf("direct onset index (f%d): %d\t(%.4f sec)\n",
-               ib,  pData->directOnsetIdx_bnd[ib], (float)pData->directOnsetIdx_bnd[ib] / pData->fs);
+        printf("direct onset index (b%d): %d \t(%.4f sec)\n", ib,  pData->directOnsetIdx_bnd[ib], (float)pData->directOnsetIdx_bnd[ib] / pData->fs); // dbg
     }
     
     pData->analysisStage = thisStage;
@@ -603,8 +603,7 @@ int getDirectOnset_1ch(
     float maxVal = tmp[maxIdx];
     float onsetThresh = maxVal * powf(10.f, thresh_dB / 20.f);
     const int directOnsetIdx = hosirrlib_firstIndexGreaterThan(tmp, 0, nSamp-1, onsetThresh);
-    
-    printf("direct max at %d: %.5f\n", maxIdx, maxVal); //dbg
+    //printf("direct max at %d: %.5f\n", maxIdx, maxVal); //dbg
     
     return directOnsetIdx;
 }
@@ -937,6 +936,8 @@ void hosirrlib_calcRDR(
     const float srcRecDist = HOSIRR_MAX(        // source distance clipped at 25cm
                                         hosirrlib_getSrcRecDistance(hHS), 0.25);
     
+    printf("Source directivity FLAG: %d\n", srcDirectivityFlag); // dbg
+    
     for (int ib = 0; ib < nBand; ib++) {
         
         /* Direct energy */
@@ -950,33 +951,34 @@ void hosirrlib_calcRDR(
         
         int winStart_direct = directOnsetIdx_bnd[ib] - winSize_preOnset;
         if (winStart_direct < 0) {
-            printf("! Clipping direct window [%d], windowStart: %d \n", ib, winStart_direct);
+            printf("! Clipping direct window [%d], windowStart: %d \n", ib, winStart_direct); // dbg
             winSize_direct = winSize_direct + winStart_direct;      // window shrinks to maintain alignment with onset
             winStart_direct = 0;
         }
         
-        // window end sample (exclusive)
+        // Window end sample (exclusive)
         int winEnd_direct = winStart_direct + winSize_direct;
         if (winEnd_direct > nSamp)
             winEnd_direct = nSamp;
         
         double directEnergy_sum = 0.f;
         for (int is = winStart_direct; is < winEnd_direct; is++) {
-            // omni pressure from this band, scaled to bring source to 1m
+            // Omni pressure from this band, scaled to bring source to 1m
             float directPress = shInBuf[ib][0][is] * srcRecDist;
             directEnergy_sum += directPress * directPress;
         }
+        printf("direct onset [%d] \twinsize: %d->%d [%d %d]\n",
+               ib, (int)(winSizeSec * pData->fs + 0.5f), winEnd_direct-winStart_direct, winStart_direct, winEnd_direct);
         
         /* Diffuse energy */
         
         // Diffuse energy measured up to T30 time after the diffuse onset to
         // avoid noise floor
         float t30 = t60Buf_omni[ib] * 0.5f;
-        int winSize_diffuse  = (int)(t30 * pData->fs);
-        // window start (inclusive) and end (exclusive) sample
+        int winSize_diffuse = (int)(t30 * pData->fs);
+        // Window start (inclusive) and end (exclusive) sample
         int winStart_diffuse = HOSIRR_MAX(diffuseOnsetIdx, winEnd_direct);
-        int winEnd_diffuse   = HOSIRR_MIN(winStart_diffuse + winSize_diffuse, nSamp);
-        
+        int winEnd_diffuse = HOSIRR_MIN(winStart_diffuse + winSize_diffuse, nSamp);
         double diffuseEnergy_sum = 0.f;
         for (int is = winStart_diffuse; is < winEnd_diffuse; is++) {
             diffuseEnergy_sum += shInBuf[ib][0][is] * shInBuf[ib][0][is]; // omni energy from this band
@@ -987,19 +989,20 @@ void hosirrlib_calcRDR(
         // Source directivity not accounted for (assumed omni)
         // For DDR: ddr_bnd_db(ib) = rdr_bnd_db(ib) - 41;
         rdrBuf[ib] = diffuseEnergy_sum / directEnergy_sum;
-
+        
+        // printf("FDN measured late energy (TD): %.5f (%.4f dB)\n", diffuseEnergy_sum, 10.f * log10f(diffuseEnergy_sum)); // dbg
         if (srcDirectivityFlag) {
-            printf("Applying band source directivity: %.5f\n", pData->srcDirectivity[ib]);
-            rdrBuf[ib] = rdrBuf[ib] * pData->srcDirectivity[ib];
+            printf("Source directivity: %.5f (%.4f dB)\n", pData->srcDirectivity[ib], 10.f * log10f(pData->srcDirectivity[ib])); // dbg
+//            rdrBuf[ib] = rdrBuf[ib] * pData->srcDirectivity[ib];
         }
 //        % precomputed directivity factors at 125 - 16k in octave steps
 //        % see compute_spherical_harmonic_representation_sample_pattern
 //        directivity_fac = [1.1216 1.8731 3.6854 5.4908 5.1385 6.8701 5.1735 6.3951];
 //        rdr_bnd(ib) = rdr_bnd(ib) * directivity_fac(ib); % with directivity
 
-        //dbg
-        printf("   diff / dir sum [%d]: %.5f / %.5f)\n", ib, diffuseEnergy_sum, directEnergy_sum);
-        printf("              rdr [%d]: %.1f (%.1f dB)\n", ib, pData->rdrBuf[ib], 10 * log10f(pData->rdrBuf[ib]));
+        // dbg
+        printf("   diff / dir sum [%d]: %.5f / %.5f\n", ib, diffuseEnergy_sum, directEnergy_sum);
+        printf("              rdr [%d]: %.1f (%.1f dB)\n", ib, rdrBuf[ib], 10 * log10f(rdrBuf[ib]));
 //        printf("  direct st/en : size [%d]: %d / %d : %d\n", ib, winStart_direct, winEnd_direct, winEnd_direct-winStart_direct);
 //        printf("  direct winsize [%d]: %d (%.1f ms)\n", ib, winEnd_direct - winStart_direct, (winEnd_direct - winStart_direct)/pData->fs*1000);
 //        printf("   diffuse start [%d]: %d (%.1f ms)\n", ib, winStart_diffuse, winStart_diffuse/pData->fs*1000);
@@ -1368,7 +1371,7 @@ void hosirrlib_calcT60_omni(
                                              st_end_meas[ibnd][0], st_end_meas[ibnd][1],
                                              pData->fs);
         
-        printf("t60: dir %d band %d  %.2f sec\n", 0, ibnd, t60Buf[ibnd]); // dbg
+        printf("t60 (omni): band %d  %.2f sec\n", ibnd, t60Buf[ibnd]); // dbg
     }
     
     free(x_slope1);
@@ -1508,7 +1511,7 @@ void hosirrlib_copyNormalizedEDCs_dir(
     const int nDir  = pData->nDir;
     float*** const edcIn = pData->edcBuf_bnd_dir;
     
-    if (pData->analysisStage >= RIR_EDC_DIR_DONE) {     // ensure EDCs are rendered
+    if (pData->analysisStage >= EDC_DIR_DONE) {     // ensure EDCs are rendered
         
         /* normalise to range [-1 1] for plotting */
         float maxVal, minVal, range, add, scale, sub;
@@ -1642,7 +1645,7 @@ void hosirrlib_copyNormalizedEDCs_omni(
     const int nDir  = pData->nDir;
     float** const edcIn = pData->edcBufOmn_bnd;
     
-    if (pData->analysisStage >= RIR_EDC_DIR_DONE) { // ensure EDCs are rendered
+    if (pData->analysisStage >= EDC_DIR_DONE) { // ensure EDCs are rendered
         
         /* normalise to range [-1 1] for plotting */
         float maxVal, minVal, range, add, scale, sub;

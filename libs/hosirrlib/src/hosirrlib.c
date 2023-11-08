@@ -993,12 +993,8 @@ void hosirrlib_calcRDR(
         // printf("FDN measured late energy (TD): %.5f (%.4f dB)\n", diffuseEnergy_sum, 10.f * log10f(diffuseEnergy_sum)); // dbg
         if (srcDirectivityFlag) {
             printf("Source directivity: %.5f (%.4f dB)\n", pData->srcDirectivity[ib], 10.f * log10f(pData->srcDirectivity[ib])); // dbg
-//            rdrBuf[ib] = rdrBuf[ib] * pData->srcDirectivity[ib];
+            rdrBuf[ib] = rdrBuf[ib] * pData->srcDirectivity[ib];
         }
-//        % precomputed directivity factors at 125 - 16k in octave steps
-//        % see compute_spherical_harmonic_representation_sample_pattern
-//        directivity_fac = [1.1216 1.8731 3.6854 5.4908 5.1385 6.8701 5.1735 6.3951];
-//        rdr_bnd(ib) = rdr_bnd(ib) * directivity_fac(ib); % with directivity
 
         // dbg
         printf("   diff / dir sum [%d]: %.5f / %.5f\n", ib, diffuseEnergy_sum, directEnergy_sum);

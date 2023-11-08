@@ -19,9 +19,13 @@
 #include "saf.h"
 #include "saf_externals.h" /* to also include saf dependencies (cblas etc.) */
 
+#include <complex.h> // For C99 complex types
+
 #include "hosirrlib.h"
 
 #ifdef __cplusplus
+#include <complex>  // For C++ complex types
+#include <cmath>    // For std::exp
 extern "C" {
 #endif /* __cplusplus */
 
@@ -323,7 +327,7 @@ static void hosirrlib_FIRCoeffs
         }
     }
     else
-        saf_print_error("Please specify an even value for the filter 'order' argument");
+        hosirr_print_error("Please specify an even value for the filter 'order' argument");
     
     /* Apply windowing function */
     hosirrlib_applyWindowingFunction(windowType, h_len, h_filt);
@@ -342,7 +346,27 @@ static void hosirrlib_FIRCoeffs
                 for(i=0; i<h_len; i++)
                     h_filt[i] /= h_sum;
                 break;
+#ifdef __cplusplus // TODO: not awesome, colliding complex types/functions when compiling in C++ project!
+            case FIR_FILTER_HPF:
+                f0 = 1.0f;
+                h_z_sum = cmplxf(0.0f, 0.0f);
+                for(i=0; i<h_len; i++)
+                    h_z_sum = ccaddf(h_z_sum, crmulf(std::exp(cmplxf(0.0f, -2.0f*SAF_PI*(float)i*f0/2.0f)), h_filt[i]));
+                h_sum = std::abs(h_z_sum);
+                for(i=0; i<h_len; i++)
+                    h_filt[i] /= h_sum;
+                break;
                 
+            case FIR_FILTER_BPF:
+                f0 = fc1/fs + fc2/fs; // correct, was (fc1/fs+fc2/fs)/2.0f;
+                h_z_sum = cmplxf(0.0f, 0.0f);
+                for(i=0; i<h_len; i++)
+                    h_z_sum = ccaddf(h_z_sum, crmulf(std::exp(cmplxf(0.0f, -2.0f*SAF_PI*(float)i*f0/2.0f)), h_filt[i]));
+                h_sum = std::abs(h_z_sum);
+                for(i=0; i<h_len; i++)
+                    h_filt[i] /= h_sum;
+                break;
+#else
             case FIR_FILTER_HPF:
                 f0 = 1.0f;
                 h_z_sum = cmplxf(0.0f, 0.0f);
@@ -362,6 +386,7 @@ static void hosirrlib_FIRCoeffs
                 for(i=0; i<h_len; i++)
                     h_filt[i] /= h_sum;
                 break;
+#endif
         }
     }
 }

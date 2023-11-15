@@ -17,7 +17,7 @@
 #include <string.h>
 
 #include "saf.h"
-#include "saf_externals.h" /* to also include saf dependencies (cblas etc.) */
+#include "saf_externals.h" // to also include saf dependencies (cblas etc.)
 
 #include <complex.h> // For C99 complex types
 

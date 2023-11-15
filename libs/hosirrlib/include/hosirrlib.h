@@ -257,11 +257,21 @@ void hosirrlib_setDirectOnsetIndices(
                                      float*** const bndBuf,
                                      const float thresh_dB,
                                      ANALYSIS_STAGE thisStage);
-void hosirrlib_setDiffuseOnsetIndex(
-                                    void* const hHS,
-                                    const float thresh_fac,
-                                    const int nWin_smooth,
-                                    ANALYSIS_STAGE thisStage);
+void hosirrlib_setDiffuseOnsetIndex_shd(
+                                        void* const hHS,
+                                        float ** const rirBuf_sh, // nsh x nsamp
+                                        const float thresh_fac,
+                                        const int nWin_smooth,
+                                        ANALYSIS_STAGE thisStage);
+void hosirrlib_setDiffuseOnsetIndex_mono(
+                                         void* const hHS,
+                                         float * const monoBuf,
+                                         const float thresh_fac,
+                                         const int winSize, // even
+                                         const int hopSize,
+                                         const int startSamp,
+                                         ANALYSIS_STAGE thisStage
+                                         );
 void hosirrlib_calcRDR(
                        void* const hHS,
                        float*** const shInBuf,          // nband x nsh x nsamp
@@ -382,6 +392,11 @@ void hosirrlib_copyNormalizedEDCs_omni(
                                        void* const hHS,
                                        float** edcCopy,
                                        float displayRange);
+void checkProperProcessingOrder(
+                          void* const hHS,
+                          ANALYSIS_STAGE currentStage,
+                          const char *funcName
+                          );
 
 /* Getters */
 

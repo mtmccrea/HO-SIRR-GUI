@@ -293,7 +293,7 @@ void hosirrlib_initBandProcessing(
     printf("\ninitBandFilters called.\n"); // dbg
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     
-    checkProperProcessingOrder(pData, thisStage, "allocProcBufs");
+    checkProperProcessingOrder(pData, thisStage, __func__);
 
     /* Initialize octave band filters
      * bandCenterFreqs are "center freqs" used to determine crossover freqs.
@@ -360,7 +360,7 @@ void hosirrlib_allocProcBufs(
     printf("\nallocProcBufs called\n"); // dbg
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     
-    checkProperProcessingOrder(pData, thisStage, "allocProcBufs");
+    checkProperProcessingOrder(pData, thisStage, __func__);
     
     const int nSH   = pData->nSH;
     const int nDir  = pData->nDir;
@@ -442,92 +442,110 @@ void hosirrlib_processRIR(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\nprocessRIR called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, ANALYSIS_BUFS_LOADED, "processRIR");
+    checkProperProcessingOrder(pData, ANALYSIS_BUFS_LOADED, __func__);
     
     // TODO: set constants elsewhere
-    const float directOnsetThreshDb = -3.f;         // direct arrival onset threashold (dB below omni peak)
+    const float directOnsetThreshDb     = -3.f;     // direct arrival onset threashold (dB below omni peak)
     const float diffuseOnsetThresh_shd  = 0.707f;   // diffuse onset threashold (normalized scalar below diffuseness peak)
-    const float diffuseOnsetThresh_mono  = 0.707f;  // diffuse onset threashold (normalized scalar below diffuseness peak)
-    const float t60_start_db        = -2.f;         // starting level of t60 measurement (<= 0)
-    const float t60_span_db         = 15.f;         // db falloff span over which t60 is measured (> 0)
-    const int nWin_smooth           = 3;            // number of analysis frames to smooth diffuseness value (framesize: 128, hop: 64)
+    const float diffuseOnsetThresh_mono = 0.707f;   // diffuse onset threashold (normalized scalar below diffuseness peak)
+    const float t60_start_db            = -2.f;     // starting level of t60 measurement (<= 0)
+    const float t60_span_db             = 15.f;     // db falloff span over which t60 is measured (> 0)
+    const int   nWin_smooth             = 3;        // number of analysis frames to smooth diffuseness value (framesize: 128, hop: 64)
     
     const int nBand = pData->nBand;
     const int nDir  = pData->nDir;
     const int nSamp = pData->nSamp;
     
+    
     /* Omni, bandwise analysis */
-    if (pData->analysisStage+1 > endStage) return;
+    
+    if (pData->analysisStage+1 > endStage)
+        return;
     
     hosirrlib_splitBands(pData, pData->rirBuf_sh, pData->rirBuf_bnd_sh,
                          1,
                          BANDS_SPLIT);
-    if (pData->analysisStage+1 > endStage) return;
+    if (pData->analysisStage+1 > endStage)
+        return;
     
     hosirrlib_setDirectOnsetIndices(pData, &pData->rirBuf_sh[0][0], pData->rirBuf_bnd_sh,
                                     directOnsetThreshDb,
                                     DIRECT_ONSETS_FOUND);
-    if (pData->analysisStage+1 > endStage) return;
+    if (pData->analysisStage+1 > endStage)
+        return;
     
     if (pData->shOrder > 0) {
+        // SHD SRIR
         hosirrlib_setDiffuseOnsetIndex_shd(pData,
                                            pData->rirBuf_sh,
                                            diffuseOnsetThresh_shd,
                                            nWin_smooth,
                                            DIFFUSENESS_ONSET_FOUND);
-        if (pData->analysisStage+1 > endStage) return;
     } else {
+        // Mono RIR
         hosirrlib_setDiffuseOnsetIndex_mono(pData,
-                                            &pData->rirBuf_sh[0][0], // ptr to head of first channel (0th-order shd (2D) signal)
+                                            &pData->rirBuf_sh[0][0],        // ptr to head of first channel (0th-order shd (2D) signal)
                                             diffuseOnsetThresh_mono,
-                                            1024, // window size
-                                            64,   // hop size
-                                            pData->directOnsetIdx_brdbnd, // start index (center of first window)
+                                            1024,                           // window size
+                                            64,                             // hop size
+                                            pData->directOnsetIdx_brdbnd,   // start index (center of first window)
                                             DIFFUSENESS_ONSET_FOUND);
     }
+    if (pData->analysisStage+1 > endStage)
+        return;
   
     hosirrlib_calcEDC_omni(pData, pData->rirBuf_bnd_sh, pData->edcBufOmn_bnd,
                            nBand, nSamp,
                            EDC_OMNI_DONE);
-    if (pData->analysisStage+1 > endStage) return;
+    if (pData->analysisStage+1 > endStage)
+        return;
     
     hosirrlib_calcT60_omni(pData, pData->edcBufOmn_bnd, pData->t60Buf_omni,
                            nBand, nSamp,
                            t60_start_db, t60_span_db, pData->diffuseOnsetIdx,
                            T60_OMNI_DONE);
-    if (pData->analysisStage+1 > endStage) return;
+    if (pData->analysisStage+1 > endStage)
+        return;
     
-    // Requires: bandwise direct onsets, omni broadband diffuse onset, omni bandwise T60s
+    // Requires: omni broadband diffuse onset, omni bandwise direct onsets, omni bandwise T60s
     hosirrlib_calcRDR(pData, pData->rirBuf_bnd_sh, pData->rdrBuf,
                       nBand, nSamp,
                       pData->diffuseOnsetIdx,
-                      pData->directOnsetIdx_bnd, // bandwise direct onsets
+                      pData->directOnsetIdx_bnd,
                       pData->t60Buf_omni,
                       pData->srcDirectivityFlag,
                       RDR_DONE);
-    if (pData->analysisStage+1 > endStage) return;
+    if (pData->analysisStage+1 > endStage)
+        return;
+    
     
     /* Directional bandwise analysis */
-    if (pData->shOrder > 0) { // only for shd signals, not omni
+    
+    if (pData->shOrder > 0) { // Only for shd signals, not mono
+        
         hosirrlib_beamformRIR(pData, pData->rirBuf_bnd_sh, pData->rirBuf_bnd_dir,
                               BEAMFORMED);
-        if (pData->analysisStage+1 > endStage) return;
+        if (pData->analysisStage+1 > endStage)
+            return;
         
         hosirrlib_calcEDC_beams(pData, pData->rirBuf_bnd_dir, pData->edcBuf_bnd_dir,
                                 nBand, nDir, nSamp,
                                 EDC_DIR_DONE);
-        if (pData->analysisStage+1 > endStage) return;
+        if (pData->analysisStage+1 > endStage)
+            return;
         
         hosirrlib_calcT60_beams(pData, pData->edcBuf_bnd_dir, pData->t60Buf_dir,
                                 nBand, nDir, nSamp,
                                 t60_start_db, t60_span_db, pData->diffuseOnsetIdx,
                                 T60_DIR_DONE);
-        if (pData->analysisStage+1 > endStage) return;
+        if (pData->analysisStage+1 > endStage)
+            return;
         
         hosirrlib_calcDirectionalGainDB(pData, pData->dirGainBufDB,
                                         t60_start_db, t60_span_db, pData->diffuseOnsetIdx,
                                         DIRGAIN_DONE);
-        if (pData->analysisStage+1 > endStage) return;
+        if (pData->analysisStage+1 > endStage)
+            return;
     }
 }
 
@@ -552,7 +570,7 @@ void hosirrlib_setDirectOnsetIndices(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\nsetDirectOnsetIndices called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, thisStage, "setDirectOnsetIndices");
+    checkProperProcessingOrder(pData, thisStage, __func__);
     
     const int nSamp = pData->nSamp;
     const int nBand = pData->nBand;
@@ -634,7 +652,7 @@ void hosirrlib_setDiffuseOnsetIndex_shd(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\nsetDiffuseOnsetIndex_shd called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, thisStage, "setDiffuseOnsetIndex_shd");
+    checkProperProcessingOrder(pData, thisStage, __func__);
     
     /* Take a local copy of current configuration to be thread safe */
     const int nChan    = pData->nDir;
@@ -875,7 +893,7 @@ void hosirrlib_setDiffuseOnsetIndex_mono(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\nsetDiffuseOnsetIndex_mono called.\n"); // dbg
 
-    checkProperProcessingOrder(pData, thisStage, "setDiffuseOnsetIndex_mono");
+    checkProperProcessingOrder(pData, thisStage, __func__);
 
     const int nBand = pData->nBand;
     const float fs  = pData->fs;
@@ -886,7 +904,7 @@ void hosirrlib_setDiffuseOnsetIndex_mono(
     const int nHops = (int)((nSamp - startSamp - wsize - halfWsize) / hopSize);
 
     if (nHops < 1) {
-        saf_print_error("[setDiffuseOnsetIndex_mono] buffer is smaller than the window size.")
+        hosirr_print_error("[setDiffuseOnsetIndex_mono] buffer is smaller than the window size.");
     }
 
     float * const window = malloc1d(wsize * sizeof(float));
@@ -995,7 +1013,7 @@ void hosirrlib_splitBands(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\nsplitBands called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, thisStage, "splitBands");
+    checkProperProcessingOrder(pData, thisStage, __func__);
     
     const int nInSamp   = pData->nSamp; // TODO: assumes nsamp of outbuf == nsamp of RIR
     const int filtOrder = pData->bandFiltOrder;
@@ -1051,7 +1069,7 @@ void hosirrlib_calcRDR(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\ncalcRDR called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, thisStage, "calcRDR");
+    checkProperProcessingOrder(pData, thisStage, __func__);
     
     // TODO: make these config constants?
     const int nCyclePerWin = 2;                 // size of the direct onset window as multiple of wavelength of band center freq
@@ -1142,7 +1160,7 @@ void hosirrlib_beamformRIR(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\nbeamformRIR called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, thisStage, "beamformRIR");
+    checkProperProcessingOrder(pData, thisStage, __func__);
     
     const int nDir    = pData->nDir;
     const int nSamp   = pData->nSamp;
@@ -1205,7 +1223,7 @@ void hosirrlib_calcEDC_beams(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\ncalcEDC_beams called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, thisStage, "calcEDC_beams");
+    checkProperProcessingOrder(pData, thisStage, __func__);
     
     /* Copy the RIR band beams into EDC buffer */
     utility_svvcopy(FLATTEN3D(inBuf),
@@ -1235,7 +1253,7 @@ void hosirrlib_calcEDC_omni(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\ncalcEDC_omni called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, thisStage, "calcEDC_omni");
+    checkProperProcessingOrder(pData, thisStage, __func__);
     
     /* Copy the RIR's omni bands into EDC buffer */
     for (int ib = 0; ib < nBand; ib++) {
@@ -1310,7 +1328,7 @@ void hosirrlib_calcDirectionalGainDB(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\ncalcDirectionalGain called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, thisStage, "calcDirectionalGain");
+    checkProperProcessingOrder(pData, thisStage, __func__);
     
     const int nBand = pData->nBand;
     const int nDir = pData->nDir;
@@ -1396,7 +1414,7 @@ void hosirrlib_calcT60_beams(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\ncalcT60_beams called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, thisStage, "calcT60_beams");
+    checkProperProcessingOrder(pData, thisStage, __func__);
         
     /* find the start and end indices of the T60 measurement for each channel */
     int*** const st_end_meas = (int***)malloc3d(nBand, nChan, 2, sizeof(int));
@@ -1451,7 +1469,7 @@ void hosirrlib_calcT60_omni(
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     printf("\ncalcT60_omni called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, thisStage, "calcT60_omni");
+    checkProperProcessingOrder(pData, thisStage, __func__);
     
     float* const x_slope1 = malloc1d(nSamp * sizeof(float)); // vector with slope of 1/samp
     float* const y_edc0m  = malloc1d(nSamp * sizeof(float)); // zero-mean EDC

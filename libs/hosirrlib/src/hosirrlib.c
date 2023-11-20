@@ -150,17 +150,33 @@ void hosirrlib_destroy(
     }
 }
 
+void hosirrlib_setInputNorm(void* const hHS, int newType)
+{
+    hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    if((NORMALIZATION_TYPES)newType != FUMA_NORM)    /* FUMA not currently supported */
+    {
+        if (newType < 4) {                               /* only 3 input norm types */
+            pData->inputNorm = (NORMALIZATION_TYPES)newType;
+        } else {
+            hosirr_print_error("Input norm specification is outside the valid range (1..3).");
+        }
+    } else {
+        hosirr_print_warning("FUMA is not currently supported as an input format.");
+        return;
+    }
+}
 
+/* Note: pData->inNorm can't be inferred from the should be set prior to calling this. */
 int hosirrlib_setRIR(
                      void* const hHS,
                      const float** H,
                      int numChannels,
                      int numSamples,
-                     int sampleRate
+                     int sampleRate,
+                     int inNormInt // N3D, SN3D, FUMA : 1, 2, 3 
                      )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\nsetRIR called\n");
     
     /* Check channel count to see if input is actually in the SHD */
     if (fabsf(sqrtf((float)numChannels) - floorf(sqrtf((float)numChannels))) > 0.0001f) {
@@ -183,13 +199,40 @@ int hosirrlib_setRIR(
     pData->fs       = (float)sampleRate;
     pData->duration = numSamples / (float)sampleRate;
     
+    NORMALIZATION_TYPES inNorm = (NORMALIZATION_TYPES)inNormInt;
+    hosirrlib_setInputNorm(pData, inNorm);
+    
     /* (Re)alloc and copy in input RIR */
     pData->rirBuf_sh = (float**)realloc2d((void**)pData->rirBuf_sh, numChannels, numSamples, sizeof(float));
-    for(int i = 0; i < numChannels; i++)
-        utility_svvcopy(H[i], numSamples, pData->rirBuf_sh[i]);
     
-    /* Initialize filters */
-    pData->analysisStage = RIR_LOADED; // Set flag before initializing filters
+    /* convert to N3D if needed */
+    switch (pData->inputNorm) {
+        case N3D_NORM:  /* already in N3D, just copy it in */
+            printf("\nProcessing N3D\n"); // dbg
+            for(int i = 0; i < numChannels; i++)
+                utility_svvcopy(H[i], numSamples, pData->rirBuf_sh[i]);
+            break;
+        case SN3D_NORM: /* convert to N3D */
+            printf("\nProcessing SN3D\n"); // dbg
+            for (int n = 0; n < pData->shOrder+1; n++) {
+                int numOrderChans = n*2 + 1;
+                int orderBaseIdx = n * n;
+                for (int i = 0; i < numOrderChans; i++) {
+                    float orderScale = sqrtf(2.0f * (float)n + 1.0f);
+                    utility_svsmul((float *)H[orderBaseIdx+i],
+                                   &orderScale, numSamples,
+                                   pData->rirBuf_sh[orderBaseIdx+i]);
+                }
+            }
+            break;
+        case FUMA_NORM: /* Not implemented */
+            hosirr_print_error("FUMA_NORM isn't currently supported as an input format");
+            break;
+    }
+    
+    pData->analysisStage = RIR_LOADED;
+    
+    /* Initialize band-processing filters */
     hosirrlib_initBandProcessing(pData, FILTERS_INTITIALIZED);
     
     /* Alloc processing resources */
@@ -224,7 +267,7 @@ void hosirrlib_setSrcPosition(
                               const float z
                               )
 {
-    printf("\nsetSrcPosition\n"); // dbg
+    printf("\n\tsetSrcPosition called.\n"); // dbg
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     float * sPos = pData->srcPosition;
     sPos[0] = x;
@@ -239,8 +282,9 @@ void hosirrlib_setRecPosition(
                               const float z
                               )
 {
-    printf("\nsetRecPosition\n"); // dbg
+    printf("\n\tsetRecPosition called.\n"); // dbg
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    
     float * rPos = pData->recPosition;
     rPos[0] = x;
     rPos[1] = y;
@@ -251,8 +295,9 @@ float hosirrlib_getSrcRecDistance(
                                   void* const hHS
                                   )
 {
-    printf("\ngetSrcRecDistance\n"); // dbg
+    printf("\n\tgetSrcRecDistance called.\n"); // dbg
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    
     float * rPos = pData->recPosition;
     float * sPos = pData->srcPosition;
     float sqDiff[3];
@@ -290,7 +335,6 @@ void hosirrlib_initBandProcessing(
                                   ANALYSIS_STAGE thisStage
                                   )
 {
-    printf("\ninitBandFilters called.\n"); // dbg
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     
     checkProperProcessingOrder(pData, thisStage, __func__);
@@ -322,29 +366,30 @@ void hosirrlib_initBandProcessing(
     /* Set xover freqs */
     for (int ib = 0; ib < pData->nBand-1; ib++) {
         pData->bandXOverFreqs[ib] = bandCenterFreqs[ib] * sqrtf(2.f);
-        printf("band %d xover %.4f\n", ib, pData->bandXOverFreqs[ib]); // dbg
+        //printf("\tXOver band %d %.1f\n", ib, pData->bandXOverFreqs[ib]); // dbg
     }
+    printf("\nFs for filterbank: %.1f Hz\n", pData->fs); // dbg
     
     /* Create the filterbank */
-    if (pData->H_bandFilt == NULL) { // if this is the first time this function is called...
+    if (pData->H_bandFilt == NULL) { // if this is the first time this function is called ...
         
-        // Allocate filter coefficients (nBand x bandFiltOrder + 1)
+        /* Allocate filter coefficients (nBand x bandFiltOrder + 1) */
         pData->H_bandFilt = (float**)realloc2d((void**)pData->H_bandFilt,
                                                pData->nBand,
                                                pData->bandFiltOrder + 1,
                                                sizeof(float));
-        // Compute FIR Filterbank coefficients
-        // FIRFilterbank(pData->bandFiltOrder, // SAF version (bug at current linked version)
-        hosirrlib_FIRFilterbank(pData->bandFiltOrder, // patched version
+        
+        /* Compute FIR Filterbank coefficients */
+        // FIRFilterbank(pData->bandFiltOrder,          // SAF version: bug at currently linked SAF version
+        hosirrlib_FIRFilterbank(pData->bandFiltOrder,   // locally patched version
                                 pData->bandXOverFreqs,
                                 pData->nBand-1,
                                 pData->fs,
                                 WINDOWING_FUNCTION_HAMMING,
                                 1,
                                 FLATTEN2D(pData->H_bandFilt));
-        
-        printf("FS FOR FILTERBANK\n\t%.1f\n", pData->fs); // dbg
     }
+    
     // hosirrlib_inspectFilts(pData); // dbg func
     
     pData->analysisStage = thisStage;
@@ -357,7 +402,6 @@ void hosirrlib_allocProcBufs(
                              ANALYSIS_STAGE thisStage
                              )
 {
-    printf("\nallocProcBufs called\n"); // dbg
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     
     checkProperProcessingOrder(pData, thisStage, __func__);
@@ -440,9 +484,9 @@ void hosirrlib_processRIR(
                           )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\nprocessRIR called.\n"); // dbg
     
-    checkProperProcessingOrder(pData, ANALYSIS_BUFS_LOADED, __func__);
+    ANALYSIS_STAGE requiredPreviousStage = ANALYSIS_BUFS_LOADED;
+    checkProperProcessingOrder(pData, requiredPreviousStage, __func__);
     
     // TODO: set constants elsewhere
     const float directOnsetThreshDb     = -3.f;     // direct arrival onset threashold (dB below omni peak)
@@ -568,7 +612,6 @@ void hosirrlib_setDirectOnsetIndices(
                                      )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\nsetDirectOnsetIndices called.\n"); // dbg
     
     checkProperProcessingOrder(pData, thisStage, __func__);
     
@@ -586,14 +629,12 @@ void hosirrlib_setDirectOnsetIndices(
     const float t0 = ((float)directOnsetIdx / fs) - (srcRecDist / 343.f);
     pData->directOnsetIdx_brdbnd = HOSIRR_MAX(directOnsetIdx, 0);
     pData->t0 = t0; // sec
-    // A negative t0Idx means t0 is before RIR start time
-    // (RIR can be trimmed ahead of the direct arrival)
-    pData->t0Idx = (int)(t0 * fs);
+    pData->t0Idx = (int)(t0 * fs); // A negative t0Idx means t0 is before the file begins (RIR can be trimmed ahead of the direct arrival)
     
     // dbg
-    printf("          t0 index: %d\t(%.4f sec)\n", pData->t0Idx, t0);
-    printf("direct onset index: %d\t(%.4f sec)\n", pData->directOnsetIdx_brdbnd, (float)pData->directOnsetIdx_brdbnd / pData->fs);
-    printf("     src->rec dist: %.3f m\n\n"      , srcRecDist);
+    printf("\n          t0 index: %d\t(%.4f sec)", pData->t0Idx, t0);
+    printf("\ndirect onset index: %d\t(%.4f sec)", pData->directOnsetIdx_brdbnd, (float)pData->directOnsetIdx_brdbnd / pData->fs);
+    printf("\n     src->rec dist: %.3f m\n\n"    , srcRecDist);
     
     /* Bandwise direct onsets */
     for (int ib = 0; ib < nBand; ib++) {
@@ -610,8 +651,7 @@ void hosirrlib_setDirectOnsetIndices(
 // returns -1 on fail
 int getDirectOnset_1ch(
                        const float * const chan,
-                       // buffer to hold copied channel data, NULL uses local memory
-                       float * tmp,
+                       float * tmp, // buffer to hold copied channel data, NULL uses local memory
                        const float thresh_dB,
                        const int nSamp
                        )
@@ -623,14 +663,13 @@ int getDirectOnset_1ch(
     }
     /* Absolute values of the omni channel */
     int maxIdx;
-    utility_svabs(chan, nSamp, tmp);                // abs
-    utility_simaxv(tmp, nSamp, &maxIdx);            // index of max(abs(omni))
+    utility_svabs(chan, nSamp, tmp);     // abs
+    utility_simaxv(tmp, nSamp, &maxIdx); // index of max(abs(omni))
     
     /* Index of first index above threshold */
     float maxVal = tmp[maxIdx];
     float onsetThresh = maxVal * powf(10.f, thresh_dB / 20.f);
     const int directOnsetIdx = hosirrlib_firstIndexGreaterThan(tmp, 0, nSamp-1, onsetThresh);
-    //printf("direct max at %d: %.5f\n", maxIdx, maxVal); //dbg
     
     if (freeLocalBuf)
         free(tmp);
@@ -640,7 +679,9 @@ int getDirectOnset_1ch(
 
 
 /* thresh_fac: threshold (normalized scalar) below the absolute max value in the
- *             buffer, above which the onset is considered to have occured. */
+ *             buffer, above which the onset is considered to have occured.
+ * NOTE: rirBuf_sh is expected to be ACN-N3D
+ */
 void hosirrlib_setDiffuseOnsetIndex_shd(
                                         void* const hHS,
                                         float ** const rirBuf_sh,
@@ -650,7 +691,6 @@ void hosirrlib_setDiffuseOnsetIndex_shd(
                                         )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\nsetDiffuseOnsetIndex_shd called.\n"); // dbg
     
     checkProperProcessingOrder(pData, thisStage, __func__);
     
@@ -697,18 +737,17 @@ void hosirrlib_setDiffuseOnsetIndex_shd(
     float_complex * inspec_anl, * inspec_syn, * pvspec_win;
     void * hFFT_syn; // for FFT
     
-    /* Make local copy of the Ambi RIR, in WXYZ ordering */
-    // OPTIM: pvir to 2D ptr?
+    /* Make local copy of the Ambi RIR, from ACN to pressure-velocity (WXYZ) ordering */
     pvir = malloc1d(nPV * lenInSig * sizeof(float));
-    int acnOrder[4] = {0, 3, 1, 2};                 // w y z x -> w x y z
+    int acnOrder[4] = {0, 3, 1, 2};
     for(int i = 0; i < nPV; i++) {
-        int inIdx = acnOrder[i];                    // TODO: Assumes ACN-N3D
+        int inIdx = acnOrder[i]; // w y z x -> w x y z
         memcpy(&pvir[i * lenInSig],
                &rirBuf_sh[inIdx][0],
                lenInSig * sizeof(float));
     };
     
-    /* Scale XYZ to normalized velocity */
+    /* Scale XYZ to normalized velocity from N3D */
     float velScale = 1.f / sqrtf(3.f);
     utility_svsmul(&pvir[1 * lenInSig], &velScale,
                    (nPV-1) * lenInSig, &pvir[1 * lenInSig]);
@@ -891,7 +930,6 @@ void hosirrlib_setDiffuseOnsetIndex_mono(
                                          )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\nsetDiffuseOnsetIndex_mono called.\n"); // dbg
 
     checkProperProcessingOrder(pData, thisStage, __func__);
 
@@ -1011,7 +1049,6 @@ void hosirrlib_splitBands(
                           )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\nsplitBands called.\n"); // dbg
     
     checkProperProcessingOrder(pData, thisStage, __func__);
     
@@ -1067,7 +1104,6 @@ void hosirrlib_calcRDR(
                        ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\ncalcRDR called.\n"); // dbg
     
     checkProperProcessingOrder(pData, thisStage, __func__);
     
@@ -1158,7 +1194,6 @@ void hosirrlib_beamformRIR(
                            ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\nbeamformRIR called.\n"); // dbg
     
     checkProperProcessingOrder(pData, thisStage, __func__);
     
@@ -1221,7 +1256,6 @@ void hosirrlib_calcEDC_beams(
                              )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\ncalcEDC_beams called.\n"); // dbg
     
     checkProperProcessingOrder(pData, thisStage, __func__);
     
@@ -1251,7 +1285,6 @@ void hosirrlib_calcEDC_omni(
                             )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\ncalcEDC_omni called.\n"); // dbg
     
     checkProperProcessingOrder(pData, thisStage, __func__);
     
@@ -1326,7 +1359,6 @@ void hosirrlib_calcDirectionalGainDB(
                                      )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\ncalcDirectionalGain called.\n"); // dbg
     
     checkProperProcessingOrder(pData, thisStage, __func__);
     
@@ -1412,7 +1444,6 @@ void hosirrlib_calcT60_beams(
                              )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\ncalcT60_beams called.\n"); // dbg
     
     checkProperProcessingOrder(pData, thisStage, __func__);
         
@@ -1467,7 +1498,6 @@ void hosirrlib_calcT60_omni(
                             )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    printf("\ncalcT60_omni called.\n"); // dbg
     
     checkProperProcessingOrder(pData, thisStage, __func__);
     
@@ -1617,11 +1647,15 @@ void checkProperProcessingOrder(
                           const char *funcName
                           )
 {
+    printf("\n\t%s called.\n", funcName); // dbg
+    
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    
     if (pData->analysisStage < currentStage - 1) {
         fprintf(stderr, "ERROR [srirlib]");
-        fprintf(stderr, " %s ", funcName);
-        fprintf(stderr, "was called before required processing stages were completed.\n");
+        fprintf(stderr, " %s (%d)", funcName, (int)currentStage);
+        fprintf(stderr, " was called before required processing stages were completed (currently at %d).\n",
+                (int)pData->analysisStage);
         exit(EXIT_FAILURE);
     }
 }
@@ -1986,10 +2020,6 @@ void hosirrlib_render
             memcpy(&shir[1*lSig], &(pData->shir[3][0]), lSig * sizeof(float));
             memcpy(&shir[2*lSig], &(pData->shir[1][0]), lSig * sizeof(float));
             memcpy(&shir[3*lSig], &(pData->shir[2][0]), lSig * sizeof(float));
-//            memcpy(&shir[0], &(pData->shir[0]), lSig * sizeof(float));
-//            memcpy(&shir[1*lSig], &(pData->shir[3*lSig]), lSig * sizeof(float));
-//            memcpy(&shir[2*lSig], &(pData->shir[1*lSig]), lSig * sizeof(float));
-//            memcpy(&shir[3*lSig], &(pData->shir[2*lSig]), lSig * sizeof(float));
             break;
     }
     
@@ -2529,8 +2559,12 @@ void hosirrlib_setChOrder(void* const hHS, int newOrder)
 void hosirrlib_setNormType(void* const hHS, int newType)
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
-    if((NORMALIZATION_TYPES)newType != FUMA_NORM || pData->analysisOrder==ANALYSIS_ORDER_FIRST) /* FUMA only supports 1st order */
+    if((NORMALIZATION_TYPES)newType != FUMA_NORM
+       || pData->analysisOrder==ANALYSIS_ORDER_FIRST) /* FUMA only supports 1st order */
+    {
         pData->norm = (NORMALIZATION_TYPES)newType;
+        hosirrlib_setInputNorm(hHS, newType); // quick fix, forward the new norm type to set the input normalization
+    }
     pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
 }
 

@@ -119,7 +119,10 @@ private:
             }
             const float** H = fileBuffer.getArrayOfReadPointers();
 //            hosirrlib_setAmbiRIR(hHS, H, fileBuffer.getNumChannels(), fileBuffer.getNumSamples(), (int)reader->sampleRate);
-            hosirrlib_setRIR(hHS, H, fileBuffer.getNumChannels(), fileBuffer.getNumSamples(), (int)reader->sampleRate);
+            hosirrlib_setRIR(
+                             hHS, H, fileBuffer.getNumChannels(),
+                             fileBuffer.getNumSamples(),
+                             (int)reader->sampleRate, hosirrlib_getNormType(hHS));
         }
     }
 

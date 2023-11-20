@@ -125,6 +125,7 @@ typedef struct _hosirrlib
     float    recPosition[3];    // [X, Y, Z]
     
     int nSH, nSamp, shOrder;
+    NORMALIZATION_TYPES inputNorm;
     float fs;
     int nDir, nBand, bandFiltOrder;
     int directOnsetIdx_brdbnd;  // direct arrival onset index within the input RIR

@@ -233,7 +233,8 @@ int hosirrlib_setRIR(
                      const float** H,
                      int numChannels,
                      int numSamples,
-                     int sampleRate);
+                     int sampleRate,
+                     int inNormInt); // N3D, SN3D, FUMA : 1, 2, 3 hosirrlib_getNormType
 void hosirrlib_initBandProcessing(
                                   void* const hHS,
                                   ANALYSIS_STAGE thisStage);

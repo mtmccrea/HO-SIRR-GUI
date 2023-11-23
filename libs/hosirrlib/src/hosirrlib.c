@@ -208,12 +208,12 @@ int hosirrlib_setRIR(
     /* convert to N3D if needed */
     switch (pData->inputNorm) {
         case N3D_NORM:  /* already in N3D, just copy it in */
-            printf("\nProcessing N3D\n"); // dbg
+            printf("\n\tProcessing N3D\n"); // dbg
             for(int i = 0; i < numChannels; i++)
                 utility_svvcopy(H[i], numSamples, pData->rirBuf_sh[i]);
             break;
         case SN3D_NORM: /* convert to N3D */
-            printf("\nProcessing SN3D\n"); // dbg
+            printf("\n\tProcessing SN3D\n"); // dbg
             for (int n = 0; n < pData->shOrder+1; n++) {
                 int numOrderChans = n*2 + 1;
                 int orderBaseIdx = n * n;
@@ -495,6 +495,7 @@ void hosirrlib_processRIR(
     const float t60_start_db            = -2.f;     // starting level of t60 measurement (<= 0)
     const float t60_span_db             = 15.f;     // db falloff span over which t60 is measured (> 0)
     const int   nWin_smooth             = 3;        // number of analysis frames to smooth diffuseness value (framesize: 128, hop: 64)
+    const int   maxDirGainAdjustment    = 12;       // maximum ajustment of directional gain allowed (absolute value)
     
     const int nBand = pData->nBand;
     const int nDir  = pData->nDir;
@@ -586,7 +587,9 @@ void hosirrlib_processRIR(
             return;
         
         hosirrlib_calcDirectionalGainDB(pData, pData->dirGainBufDB,
-                                        t60_start_db, t60_span_db, pData->diffuseOnsetIdx,
+                                        t60_start_db, t60_span_db,
+                                        pData->diffuseOnsetIdx,
+                                        maxDirGainAdjustment,
                                         DIRGAIN_DONE);
         if (pData->analysisStage+1 > endStage)
             return;
@@ -1336,7 +1339,7 @@ float hosirrlib_gainOffsetDB_1ch(
     float tar_mn = sumf(&targetEDC[startIdx], nSamp_meas) / nSamp_meas;
     float gain_db = tar_mn - src_mn;
     
-    // Scalar pressure gain factor (linear: powf(10.f, gain_db / 20.f))
+    // Scalar _pressure_ gain factor (linear: powf(10.f, gain_db / 20.f))
     return gain_db;
 }
 
@@ -1355,6 +1358,7 @@ void hosirrlib_calcDirectionalGainDB(
                                      const float start_db,
                                      const float span_db,
                                      const int beginIdx,
+                                     const int maxGainAdjustment, // absolute value
                                      ANALYSIS_STAGE thisStage
                                      )
 {
@@ -1365,8 +1369,6 @@ void hosirrlib_calcDirectionalGainDB(
     const int nBand = pData->nBand;
     const int nDir = pData->nDir;
     const int nSamp = pData->nSamp;
-    
-    float* sortedGains = malloc1d(nDir * sizeof(float));
     
     /* Here the reference for determining the gain is the omni EDC for each
      * band. So an overall energy matching will be needed.
@@ -1381,43 +1383,61 @@ void hosirrlib_calcDirectionalGainDB(
     int** const st_end_meas = (int**)malloc2d(nBand, 2, sizeof(int));
     
     for (int ib = 0; ib < nBand; ib++) {
+        printf("\tband %d\n", ib); // dbg
+        
         hosirrlib_findDecayBounds(&edcOmn_bnd[ib][0],
                                   beginIdx, nSamp, start_db, span_db,
                                   &st_end_meas[ib][0]);
-        float maxOffset = -500.f;
+        
+        // First pass: find directional gain and accumulate for mean
+        float gOffset, gOffset_mean;
+        float gOffset_sum = 0.f;
         for (int id = 0; id < nDir; id++) {
-            /* Note, "target" (omni EDC) is passed as the _source_ argument, so
-             * that the returned gain represents the gain to be applied to
-             * source signals to match the target energy distribution (SHD) */
-            float gOffset = hosirrlib_gainOffsetDB_1ch(&edcOmn_bnd[ib][0],
-                                                     &edcDir_bnd[ib][id][0],
-                                                     st_end_meas[ib][0],
-                                                     st_end_meas[ib][1]);
-            dirGainBuf[ib][id] = gOffset;
-            if (gOffset > maxOffset)
-                maxOffset = gOffset;
-        }
-        
-        // TODO: only one method for the gain factor will be used, so either
-        //       the sorting or max-finding will be removed accordingly
-        
-        // sort gain offsets to find the median
-        sortf(&dirGainBuf[ib][0], sortedGains, NULL, nDir, 0);
-        float gOffset_med = sortedGains[(int)(nDir/2.f)];
-        
-        // Normalize the returned gain within this band so max gain is 0dB and
-        // the rest are attenuated (no boosting)
-        for (int id = 0; id < nDir; id++) {
-            // TODO: take care to maintain an overall energy that matches omni
-            dirGainBuf[ib][id] -= maxOffset;        // for max normalization (attenuation only)
-            // dirGainBuf[ib][id] -= gOffset_med;   // for median normalization (some gains, some cuts)
             
-            printf("dirGain: dir %d band %d (%.2f)\t%.2f dB\n", id, ib, powf(10, dirGainBuf[ib][id] / 20.f), dirGainBuf[ib][id]); // dbg
+            /* Note, omni EDC serves as a reference level, so it is passed as
+             * the _source_ argument. As such, the returned gain represents the
+             * gain to be applied to match the target energy distribution */
+            gOffset = hosirrlib_gainOffsetDB_1ch(&edcOmn_bnd[ib][0],
+                                                       &edcDir_bnd[ib][id][0],
+                                                       st_end_meas[ib][0],
+                                                       st_end_meas[ib][1]);
+            dirGainBuf[ib][id] = gOffset;
+            gOffset_sum += gOffset; // for mean
         }
+        // Mean gain offset across directions
+        gOffset_mean = gOffset_sum / nDir;
+        printf("\tdirGain mean: %.2f dB\n", gOffset_mean); // dbg
+        
+        // Second pass: remove the mean, clip to +/- maxGainAdjustment, update mean
+        gOffset_sum = 0.f;
+        
+        for (int id = 0; id < nDir; id++) {
+            
+            // Gain offset made to be zero-mean across directions
+            gOffset = dirGainBuf[ib][id];
+            printf("\t\tdir %d pre-norm dirGain: (%.2f)\t%.2f dB\n", id, powf(10, gOffset / 20.f), gOffset); // dbg
+            gOffset -= gOffset_mean;
+            // Clip gain offset to +/- maxGainAdjustment
+            gOffset = HOSIRR_MAX(HOSIRR_MIN(gOffset, maxGainAdjustment), -maxGainAdjustment);
+//            printf("\t\t       post-norm/clip dirGain: (%.2f)\t%.2f dB\n", powf(10, gOffset / 20.f), gOffset); // dbg
+            
+            dirGainBuf[ib][id] = gOffset;
+            gOffset_sum += gOffset; // for mean
+        }
+        gOffset_mean = gOffset_sum / nDir;
+        printf("\tpost-norm/clip dirGain mean: %.2f dB\n\n", gOffset_mean); // dbg
+        
+        // Second pass: remove updated mean
+        for (int id = 0; id < nDir; id++) {
+            printf("\t\tdir %d dirGain: \t%.2f", id, dirGainBuf[ib][id]); // dbg
+            dirGainBuf[ib][id] -= gOffset_mean;   // for zero-mean normalization (preserve omni energy)
+            printf(" / %.2f dB (post-clip)\n", dirGainBuf[ib][id]); // dbg
+        }
+        
     }
     
     free(st_end_meas);
-    free(sortedGains);
+    
     pData->analysisStage = thisStage;
 }
 
@@ -1647,7 +1667,7 @@ void checkProperProcessingOrder(
                           const char *funcName
                           )
 {
-    printf("\n\t%s called.\n", funcName); // dbg
+    printf("\n~~ %s called. ~~\n", funcName); // dbg
     
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     

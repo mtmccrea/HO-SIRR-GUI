@@ -282,7 +282,7 @@ void hosirrlib_calcRDR(
                        const int diffuseOnsetIdx,
                        int * const directOnsetIdx_bnd,  // bandwise direct onsets
                        float *  const t60Buf_omni,
-                       const int srcDirectivityFlag,       // 0: omni, 1: "regular" loudspeaker
+                       const int srcDirectivityFlag,    // 0: omni, 1: "regular" loudspeaker
                        ANALYSIS_STAGE thisStage);
 void hosirrlib_beamformRIR(
                            void* const hHS,
@@ -326,12 +326,13 @@ void hosirrlib_calcT60_omni(
                             const int beginIdx,
                             ANALYSIS_STAGE thisStage);
 void hosirrlib_calcDirectionalGainDB(
-                                   void* const hHS,
-                                   float** const dirGainBuf, // nBand x nChan
-                                   const float start_db,
-                                   const float span_db,
-                                   const int beginIdx,
-                                   ANALYSIS_STAGE thisStage);
+                                     void* const hHS,
+                                     float** const dirGainBuf, // nBand x nChan
+                                     const float start_db,
+                                     const float span_db,
+                                     const int beginIdx,
+                                     const int maxGainAdjustment, // absolute value
+                                     ANALYSIS_STAGE thisStage);
 /* Helpers */
 
 int getDirectOnset_1ch(
@@ -343,17 +344,19 @@ void hosirrlib_calcEDC_1ch(
                            float* const dataBuf,
                            const int nSamp);
 float hosirrlib_gainOffsetDB_1ch(
-                              float* const srcEDC,
-                              float* const targetEDC,
-                              const int startIdx,
-                               const int endIdx);
-void hosirrlib_findDecayBounds(float* const edcBuf,
+                                 float* const srcEDC,
+                                 float* const targetEDC,
+                                 const int startIdx,
+                                 const int endIdx);
+void hosirrlib_findDecayBounds(
+                               float* const edcBuf,
                                const int beginIdx,
                                const int bufLength,
                                const float start_db,
                                const float span_db,
                                int* const st_end_meas);
-float hosirrlib_T60_lineFit(float* const edcBuf,
+float hosirrlib_T60_lineFit(
+                            float* const edcBuf,
                             float* x_slopeBuf,
                             float* y_edc0mBuf,
                             float* stageBuf,
@@ -394,10 +397,10 @@ void hosirrlib_copyNormalizedEDCs_omni(
                                        float** edcCopy,
                                        float displayRange);
 void checkProperProcessingOrder(
-                          void* const hHS,
-                          ANALYSIS_STAGE currentStage,
-                          const char *funcName
-                          );
+                                void* const hHS,
+                                ANALYSIS_STAGE currentStage,
+                                const char *funcName
+                                );
 
 /* Getters */
 

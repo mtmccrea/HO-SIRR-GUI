@@ -74,12 +74,12 @@ extern "C" {
 
 /** Macro to print a warning message along with the filename and line number */
 # define hosirr_print_warning(message) {fprintf(stdout, \
-                                    "\nSAF WARNING: %s [%s LINE %u] \n", message,\
+                                    "\nRIRLIB WARNING: %s [%s LINE %u] \n", message,\
                                     __FILE__, __LINE__);}
 
 /** Macro to print a error message along with the filename and line number */
 # define hosirr_print_error(message) {fprintf(stderr, \
-                                  "\nSAF ERROR: %s [%s LINE %u] \n", message, \
+                                  "\nRIRLIB ERROR: %s [%s LINE %u] \n", message, \
                                   __FILE__, __LINE__); \
                                   exit(EXIT_FAILURE);}
 

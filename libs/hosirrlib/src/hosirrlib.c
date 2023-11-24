@@ -1518,6 +1518,7 @@ void hosirrlib_calcT60_omni(
                             )
 {
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
+    const float fs = pData->fs;
     
     checkProperProcessingOrder(pData, thisStage, __func__);
     
@@ -1542,6 +1543,10 @@ void hosirrlib_calcT60_omni(
                                              pData->fs);
         
         printf("t60 (omni): band %d  %.2f sec\n", ibnd, t60Buf[ibnd]); // dbg
+        if (t60Buf[ibnd] * fs > nSamp) {
+            hosirr_print_warning("Measured T60 for this band is longer than the duration of the buffer. If this is unexpected, double check that your start_db and span_db are appropriate.")
+            printf("\t(Band %d, t60 %.1f sec)\n", ibnd, t60Buf[ibnd]);
+        }
     }
     
     free(x_slope1);

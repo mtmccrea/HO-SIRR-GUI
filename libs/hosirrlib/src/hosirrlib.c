@@ -295,7 +295,7 @@ float hosirrlib_getSrcRecDistance(
                                   void* const hHS
                                   )
 {
-    printf("\n\tgetSrcRecDistance called.\n"); // dbg
+    //printf("\n\tgetSrcRecDistance called.\n"); // dbg
     hosirrlib_data *pData = (hosirrlib_data*)(hHS);
     
     float * rPos = pData->recPosition;
@@ -368,7 +368,6 @@ void hosirrlib_initBandProcessing(
         pData->bandXOverFreqs[ib] = bandCenterFreqs[ib] * sqrtf(2.f);
         //printf("\tXOver band %d %.1f\n", ib, pData->bandXOverFreqs[ib]); // dbg
     }
-    printf("\nFs for filterbank: %.1f Hz\n", pData->fs); // dbg
     
     /* Create the filterbank */
     if (pData->H_bandFilt == NULL) { // if this is the first time this function is called ...
@@ -635,16 +634,17 @@ void hosirrlib_setDirectOnsetIndices(
     pData->t0Idx = (int)(t0 * fs); // A negative t0Idx means t0 is before the file begins (RIR can be trimmed ahead of the direct arrival)
     
     // dbg
+    printf("\n     src->rec dist: %.3f m", srcRecDist);
+    printf("\ndirect onset index: %d\t(%.4f sec)\n\n", pData->directOnsetIdx_brdbnd, (float)pData->directOnsetIdx_brdbnd / pData->fs);
     printf("\n          t0 index: %d\t(%.4f sec)", pData->t0Idx, t0);
-    printf("\ndirect onset index: %d\t(%.4f sec)", pData->directOnsetIdx_brdbnd, (float)pData->directOnsetIdx_brdbnd / pData->fs);
-    printf("\n     src->rec dist: %.3f m\n\n"    , srcRecDist);
     
     /* Bandwise direct onsets */
+    printf("Bandwise direct onset indices:\n");
     for (int ib = 0; ib < nBand; ib++) {
         directOnsetIdx = getDirectOnset_1ch(&bndBuf[ib][0][0], // omni band: nBand x nSH x nSamp
                                             vabs_tmp, thresh_dB, nSamp);
         pData->directOnsetIdx_bnd[ib] = HOSIRR_MAX(directOnsetIdx, 0);
-        printf("direct onset index (b%d): %d \t(%.4f sec)\n", ib,  pData->directOnsetIdx_bnd[ib], (float)pData->directOnsetIdx_bnd[ib] / pData->fs); // dbg
+        printf("\t(b%d): %d \t(%.4f sec)\n", ib,  pData->directOnsetIdx_bnd[ib], (float)pData->directOnsetIdx_bnd[ib] / pData->fs); // dbg
     }
     
     pData->analysisStage = thisStage;
@@ -858,49 +858,56 @@ void hosirrlib_setDiffuseOnsetIndex_shd(
     
     /* Begin search for max diffuseness at the first window containing the
      * direct arrival, where we can expect low diffuseness */
-    int directIdx_tmp = HOSIRR_MAX(pData->directOnsetIdx_brdbnd - hopSize, 0);
-    int hopIdx_direct = (int)ceilf((float)directIdx_tmp / hopSize);
-    int maxWinIdx;
-    utility_simaxv(&diff_frames[hopIdx_direct],
-                   nDiffFrames - hopIdx_direct,
-                   &maxWinIdx);
-    maxWinIdx += hopIdx_direct; // add the starting position back
+    int directStartIdx = HOSIRR_MAX(pData->directOnsetIdx_brdbnd - hopSize, 0);
+    int directHopIdx = (int)ceilf((float)directStartIdx / hopSize);
+    int maxHopIdx;
+    utility_simaxv(&diff_frames[directHopIdx],
+                   nDiffFrames - directHopIdx,
+                   &maxHopIdx);
+    maxHopIdx += directHopIdx; // add the starting position back
     
-    /* Index of first index above threshold */
-    const float maxVal      = diff_frames[maxWinIdx];
-    const float onsetThresh = maxVal * thresh_fac;
-    const int   onsetWinIdx = hosirrlib_firstIndexGreaterThan(diff_frames, 0, nDiffFrames-1, onsetThresh);
+    /* Index of first window above threshold */
+    const float diffuseMax  = diff_frames[maxHopIdx];
+    const float onsetThresh = diffuseMax * thresh_fac;
+    const int   onsetHopIdx = hosirrlib_firstIndexGreaterThan(diff_frames, directHopIdx, nDiffFrames-1, onsetThresh);
     
-    /* NOTE: Normally we'd assume the _sample_ onset index is in the middle
-     * of the window. I.e. onsetWinIdx * hopsize + winsize/2.
-     * But because pvsig was zero-padded at the head by winsize/2, we can omit
-     * that offset here. */
-    int diffuseOnsetIdx = onsetWinIdx * hopSize;
+    /* NOTE: Normally we'd assume the sample onset index is in the middle of the
+     * window. I.e. onsetWinIdx * hopsize + winsize/2. But because pvsig was
+     * zero-padded at the head by winsize/2, we can omit that offset here. */
+    int diffuseOnsetIdx = onsetHopIdx * hopSize;
     
-    if (maxVal < pData->diffuseMin) {
+    if (diffuseMax < pData->diffuseMin) {
         hosirr_print_warning("Diffuseness didn't exceed the valid threshold.\nFalling back on directOnset + directOnsetFallbackDelay.");
         diffuseOnsetIdx = pData->directOnsetIdx_brdbnd + (int)(pData->diffuseOnsetFallbackDelay * fs);
     }
-    // Diffuse onset sample index in the _input buffer_
+    /* Diffuse onset sample index.
+     * This is the integer sample position in the the analyzed buffer. */
     pData->diffuseOnsetIdx = diffuseOnsetIdx;
-    // Diffuse onset time in the _room_, relative to T0, which can be before beginning of input buffer
+    /* Diffuse onset time.
+     * This is the acoustic property of the room. It is relative to t0, the time
+     * at which the sound is emitted from the source (which can be before
+     * beginning of the provided buffer, e.g. if the silence preceding the
+     * direct arrival was trimmed from the recording). */
     pData->diffuseOnsetSec = ((float)diffuseOnsetIdx / fs) - pData->t0;
     
     // dbg
-    printf("     begin search at hop idx: %d\n",            hopIdx_direct);
-    printf("       diffuse onset win idx: %d\n",            onsetWinIdx);
+    printf("     begin search at hop idx: %d\n",            directHopIdx);
+    printf("       diffuse onset win idx: %d\n",            onsetHopIdx);
     printf("    diffuse onset sample idx: %d (%.3f sec)\n", pData->diffuseOnsetIdx, (float)pData->diffuseOnsetIdx / pData->fs);
     printf(" t0-adjusted diff onset time: %.3f sec\n",      pData->diffuseOnsetSec);
-    printf("         diffuse max win idx: %d\n",            maxWinIdx);
-    printf("           diffuse max value: %.3f\n",          maxVal);
+    printf("         diffuse max hop idx: %d\n",            maxHopIdx);
+    printf("           diffuse max value: %.3f\n",          diffuseMax);
     printf("        diffuse onset thresh: %.3f\n",          onsetThresh);
     
     /* Sanity checks */
-    //  Time events should be properly increasing
+    // Time events should be properly increasing
     if ((pData->t0Idx >= pData->directOnsetIdx_brdbnd) ||
-        (pData->directOnsetIdx_brdbnd >= pData->diffuseOnsetIdx))
+        (pData->directOnsetIdx_brdbnd > pData->diffuseOnsetIdx)) {
+        printf("\nt0Idx = %d \ndirectOnsetIdx_brdbnd = %d \ndiffuseOnsetIdx = %d\n",
+               pData->t0Idx, pData->directOnsetIdx_brdbnd, pData->diffuseOnsetIdx);
         hosirr_print_error("! Order of analyzed events isn't valid. Should be t0Idx < directOnsetIdx < diffuseOnsetIdx.");
-    //  Diffuse onset from t0 should be positive
+    }
+    // Diffuse onset from t0 should be positive
     if (pData->diffuseOnsetSec < 0)
         hosirr_print_error("! Diffuse onset is negative");
     
@@ -1005,8 +1012,9 @@ void hosirrlib_setDiffuseOnsetIndex_mono(
     
     int diffuseOnsetIdx;
     if (foundOnset) {
-        // TODO: for now we're calling the onset the center of the window where the measure is most "sensitive"
-        // Could alternatively linearly interp between prev window peak and this one
+        // We're calling the onset the center of the window where the measure is
+        // most "sensitive". Could alternatively linearly interp between prev
+        // window peak and this one.
         diffuseOnsetIdx = winStart + halfWsize;
     } else {
         hosirr_print_warning("Echo density (diffuseness) didn't exceed the threshold.\nFalling back on directOnset + directOnsetFallbackDelay.");
@@ -1014,7 +1022,8 @@ void hosirrlib_setDiffuseOnsetIndex_mono(
     }
     // Diffuse onset sample index in the _input buffer_
     pData->diffuseOnsetIdx = diffuseOnsetIdx;
-    // Diffuse onset time in the _room_, relative to T0, which can be before beginning of input buffer
+    // Diffuse onset time in the _room_, from t0, which can be before beginning
+    // of input the buffer
     pData->diffuseOnsetSec = ((float)diffuseOnsetIdx / fs) - pData->t0;
 
     // dbg
@@ -1027,8 +1036,11 @@ void hosirrlib_setDiffuseOnsetIndex_mono(
     /* Sanity checks */ // TODO: Move to helper func
     //  Time events should be properly increasing
     if ((pData->t0Idx >= pData->directOnsetIdx_brdbnd) ||
-        (pData->directOnsetIdx_brdbnd >= pData->diffuseOnsetIdx))
+        (pData->directOnsetIdx_brdbnd >= pData->diffuseOnsetIdx)) {
+        printf("\nt0Idx = %d \ndirectOnsetIdx_brdbnd = %d \ndiffuseOnsetIdx = %d\n",
+               pData->t0Idx, pData->directOnsetIdx_brdbnd, pData->diffuseOnsetIdx);
         hosirr_print_error("Order of analyzed events isn't valid. Should be t0Idx < directOnsetIdx < diffuseOnsetIdx.");
+    }
     //  Diffuse onset from t0 should be positive
     if (pData->diffuseOnsetSec < 0)
         hosirr_print_error("Diffuse onset is negative");

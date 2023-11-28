@@ -635,8 +635,8 @@ void hosirrlib_setDirectOnsetIndices(
     
     // dbg
     printf("\n     src->rec dist: %.3f m", srcRecDist);
-    printf("\ndirect onset index: %d\t(%.4f sec)\n\n", pData->directOnsetIdx_brdbnd, (float)pData->directOnsetIdx_brdbnd / pData->fs);
-    printf("\n          t0 index: %d\t(%.4f sec)", pData->t0Idx, t0);
+    printf("\ndirect onset index: %d\t(%.4f sec)", pData->directOnsetIdx_brdbnd, (float)pData->directOnsetIdx_brdbnd / pData->fs);
+    printf("\n          t0 index: %d\t(%.4f sec)\n\n", pData->t0Idx, t0);
     
     /* Bandwise direct onsets */
     printf("Bandwise direct onset indices:\n");
@@ -1160,8 +1160,8 @@ void hosirrlib_calcRDR(
             float directPress = shInBuf[ib][0][is] * srcRecDist;
             directEnergy_sum += directPress * directPress;
         }
-        printf("direct onset [%d] \twinsize: %d->%d [%d %d]\n",
-               ib, (int)(winSizeSec * pData->fs + 0.5f), winEnd_direct-winStart_direct, winStart_direct, winEnd_direct);
+        //printf("direct onset [%d] \twinsize: %d->%d [%d %d]\n",
+        //       ib, (int)(winSizeSec * pData->fs + 0.5f), winEnd_direct-winStart_direct, winStart_direct, winEnd_direct);
         
         /* Diffuse energy */
         
@@ -1423,11 +1423,12 @@ void hosirrlib_calcDirectionalGainDB(
         // Second pass: remove the mean, clip to +/- maxGainAdjustment, update mean
         gOffset_sum = 0.f;
         
+        printf("\tpre-norm dirGains:\n"); // dbg
         for (int id = 0; id < nDir; id++) {
             
             // Gain offset made to be zero-mean across directions
             gOffset = dirGainBuf[ib][id];
-            printf("\t\tdir %d pre-norm dirGain: (%.2f)\t%.2f dB\n", id, powf(10, gOffset / 20.f), gOffset); // dbg
+            printf("\t\tdir %d:\t%.2f,\t%.2f dB\n", id, powf(10, gOffset / 20.f), gOffset); // dbg
             gOffset -= gOffset_mean;
             // Clip gain offset to +/- maxGainAdjustment
             gOffset = HOSIRR_MAX(HOSIRR_MIN(gOffset, maxGainAdjustment), -maxGainAdjustment);
@@ -1437,13 +1438,14 @@ void hosirrlib_calcDirectionalGainDB(
             gOffset_sum += gOffset; // for mean
         }
         gOffset_mean = gOffset_sum / nDir;
-        printf("\tpost-norm/clip dirGain mean: %.2f dB\n\n", gOffset_mean); // dbg
+        printf("\tpost-norm/clip dirGain mean: %.2f dB\n", gOffset_mean); // dbg
         
         // Second pass: remove updated mean
+        printf("\tpost-clip\t/\trenormalized dirGains:\n"); // dbg
         for (int id = 0; id < nDir; id++) {
-            printf("\t\tdir %d dirGain: \t%.2f", id, dirGainBuf[ib][id]); // dbg
+            printf("\t\tdir %d:\t%.2f", id, dirGainBuf[ib][id]); // dbg
             dirGainBuf[ib][id] -= gOffset_mean;   // for zero-mean normalization (preserve omni energy)
-            printf(" / %.2f dB (post-clip)\n", dirGainBuf[ib][id]); // dbg
+            printf(" / %.2f dB\n", dirGainBuf[ib][id]); // dbg
         }
         
     }
@@ -1503,7 +1505,7 @@ void hosirrlib_calcT60_beams(
                                                       st_end_meas[ibnd][ich][0], st_end_meas[ibnd][ich][1],
                                                       pData->fs);
             
-            printf("t60: dir %d band %d  %.2f sec\n", ich, ibnd, t60Buf[ibnd][ich]); // dbg
+            // printf("t60: dir %d band %d  %.2f sec\n", ich, ibnd, t60Buf[ibnd][ich]); // dbg
         }
     }
         

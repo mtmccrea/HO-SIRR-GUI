@@ -51,26 +51,17 @@ extern "C" {
 /* define local versions                                                      */
 /* ========================================================================== */
 
-#define HOSIRR_MAX(a,b)      \
-({                           \
-    __typeof__ (a) _a = (a); \
-    __typeof__ (b) _b = (b); \
-    _a > _b ? _a : _b;       \
-})
+#ifndef HOSIRR_MIN
+# define HOSIRR_MIN(a,b) (( (a) < (b) ) ? (a) : (b))
+#endif
 
-#define HOSIRR_MIN(a,b)      \
-({                           \
-    __typeof__ (a) _a = (a); \
-    __typeof__ (b) _b = (b); \
-    _a < _b ? _a : _b;       \
-})
+#ifndef HOSIRR_MAX
+# define HOSIRR_MAX(a,b) (( (a) > (b) ) ? (a) : (b))
+#endif
 
-#define HOSIRR_CLAMP(val, min_val, max_val) ({  \
-    __typeof__(val) _val = (val);               \
-    __typeof__(min_val) _min_val = (min_val);   \
-    __typeof__(max_val) _max_val = (max_val);   \
-    _val < _min_val ? _min_val : (_val > _max_val ? _max_val : _val); \
-})
+#ifndef HOSIRR_CLAMP
+# define HOSIRR_CLAMP(a,min,max) (HOSIRR_MAX(min, HOSIRR_MIN(max, a)))
+#endif
 
 /** Macro to print a warning message along with the filename and line number */
 # define hosirr_print_warning(message) {fprintf(stdout, \

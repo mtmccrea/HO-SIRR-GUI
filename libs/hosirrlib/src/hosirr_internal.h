@@ -33,13 +33,10 @@ extern "C"
 /* ========================================================================== */
 /*                            Internal Parameters                             */
 /* ========================================================================== */
-//#ifndef HOSIRR_MAX_SH_ORDER
-//#define HOSIRR_MAX_SH_ORDER ( HOSIRR_MAX_SH_ORDER )
-//#define MAX_NUM_SH_SIGNALS ( (HOSIRR_MAX_SH_ORDER+1)*(HOSIRR_MAX_SH_ORDER+1) ) /* Maximum number
-//of spherical harmonic components */ #endif
-#define MAX_NUM_LOUDSPEAKERS                                                                       \
-    (HOSIRR_MAX_NUM_OUTPUTS) /* Maximum permitted channels for the VST standard */
-#define MIN_NUM_LOUDSPEAKERS (4) /* To help avoid traingulation errors when using, e.g. AllRAD */
+/* Maximum permitted channels for the VST standard */
+#define MAX_NUM_LOUDSPEAKERS (HOSIRR_MAX_NUM_OUTPUTS)
+/* To help avoid traingulation errors when using, e.g. AllRAD */
+#define MIN_NUM_LOUDSPEAKERS (4)
 #define MAX_NUM_LOUDSPEAKERS_IN_PRESET (MAX_NUM_LOUDSPEAKERS)
 #define DEFAULT_WINDOW_LENGTH (128)
 #define MAX_WINDOW_LENGTH (256)
@@ -341,8 +338,9 @@ extern "C"
                 for (i = 0; i < h_len; i++)
                     h_filt[i] /= h_sum;
                 break;
-#ifdef __cplusplus // TODO: not awesome, colliding complex types/functions when compiling in C++
-                   // project!
+#ifdef __cplusplus
+            // TODO: ifdef here not awesome, colliding complex types/functions when compiling in C++
+            // project!
             case FIR_FILTER_HPF:
                 f0 = 1.0f;
                 h_z_sum = cmplxf(0.0f, 0.0f);

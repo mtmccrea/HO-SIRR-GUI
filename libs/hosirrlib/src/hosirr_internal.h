@@ -18,10 +18,9 @@
 
 #include "saf.h"
 #include "saf_externals.h" // to also include saf dependencies (cblas etc.)
+#include "hosirrlib.h"
 
 #include <complex.h> // For C99 complex types
-
-#include "hosirrlib.h"
 
 #ifdef __cplusplus
 #include <cmath> // For std::exp

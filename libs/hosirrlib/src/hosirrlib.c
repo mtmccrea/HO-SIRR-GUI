@@ -172,7 +172,7 @@ int hosirrlib_setRIR(
 
         // TODO: only set state to unitialized if there was no previous RIR loaded
         // setRIRState_uninitialized(pData)
-        printf("setRIR: Based on numChannels, input file doesn't appear to be a SHD file\n");
+        hosirr_print_warning("setRIR: Based on numChannels, input file doesn't appear to be a SHD file.");
 
         /* old vars */
         pData->ambiRIR_status = AMBI_RIR_STATUS_NOT_LOADED;

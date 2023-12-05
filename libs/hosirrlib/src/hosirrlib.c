@@ -1426,11 +1426,11 @@ void hosirrlib_calcT60_omni(void* const hHS, float** const edcBuf_omn, float* co
             x_slope1, y_edc0m, stage, st_end_meas[ibnd][0], st_end_meas[ibnd][1], pData->fs);
 
         printf("t60 (omni): band %d  %.2f sec\n", ibnd, t60Buf[ibnd]); // dbg
-        if (t60Buf[ibnd] * fs > nSamp) {
+        if (t60Buf[ibnd] * fs > nSamp * 2) {
             hosirr_print_warning(
-                "Measured T60 for this band is longer than the duration of the buffer. If this is "
-                "unexpected, double check that your start_db and span_db are appropriate.")
-                printf("\t(Band %d, t60 %.1f sec)\n", ibnd, t60Buf[ibnd]);
+                "Measured T60 for this band is longer than twice the duration of the buffer. "
+                "If this is unexpected, double check that your start_db and span_db are "
+                "appropriate.") printf("\t(Band %d, t60 %.1f sec)\n", ibnd, t60Buf[ibnd]);
         }
     }
 

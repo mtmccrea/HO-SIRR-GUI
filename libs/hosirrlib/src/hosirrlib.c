@@ -58,6 +58,8 @@ void hosirrlib_create(void** const phHS)
 
     pData->srcDirectivityFlag = 1; // default to "regular" loudspeaker directivity
 
+    fflush(stdout); // flush printf's buffer
+    
     /* Zero out the state of buffer resources */
     hosirrlib_setUninitialized(pData);
 
@@ -100,6 +102,8 @@ void hosirrlib_create(void** const phHS)
     pData->broadBandFirstPeakFLAG = 1;
     pData->windowLength = DEFAULT_WINDOW_LENGTH;
     pData->wetDryBalance = 1.0f;
+    
+    fflush(stdout); // flush printf's buffer
 }
 
 void hosirrlib_destroy(void** const phHS)
@@ -167,6 +171,8 @@ int hosirrlib_setRIR(
 {
     hosirrlib_data* pData = (hosirrlib_data*)(hHS);
 
+    fflush(stdout); // flush printf's buffer
+    
     /* Check channel count to see if input is actually in the SHD */
     if (fabsf(sqrtf((float)numChannels) - floorf(sqrtf((float)numChannels))) > 0.0001f) {
 
@@ -246,12 +252,13 @@ int hosirrlib_setRIR(
     pData->ambiRIR_status = AMBI_RIR_STATUS_LOADED;
     pData->lsRIR_status = LS_RIR_STATUS_NOT_RENDERED;
 
+    fflush(stdout); // flush printf's buffer
+    
     return (int)(pData->ambiRIR_status); // TODO: consider use of returned value
 }
 
 void hosirrlib_setSrcPosition(void* const hHS, const float x, const float y, const float z)
 {
-    printf("\n\tsetSrcPosition called.\n"); // dbg
     hosirrlib_data* pData = (hosirrlib_data*)(hHS);
     float* sPos = pData->srcPosition;
     sPos[0] = x;
@@ -261,7 +268,6 @@ void hosirrlib_setSrcPosition(void* const hHS, const float x, const float y, con
 
 void hosirrlib_setRecPosition(void* const hHS, const float x, const float y, const float z)
 {
-    printf("\n\tsetRecPosition called.\n"); // dbg
     hosirrlib_data* pData = (hosirrlib_data*)(hHS);
 
     float* rPos = pData->recPosition;
@@ -272,7 +278,6 @@ void hosirrlib_setRecPosition(void* const hHS, const float x, const float y, con
 
 float hosirrlib_getSrcRecDistance(void* const hHS)
 {
-    // printf("\n\tgetSrcRecDistance called.\n"); // dbg
     hosirrlib_data* pData = (hosirrlib_data*)(hHS);
 
     float* rPos = pData->recPosition;
@@ -287,7 +292,9 @@ float hosirrlib_getSrcRecDistance(void* const hHS)
 
 void hosirrlib_setUninitialized(void* const hHS)
 {
-    printf("\nsetUninitialized called.\n"); // dbg
+    printf("setUninitialized called.\n");  // dbg
+    fflush(stdout); // flush printf's buffer
+    
     hosirrlib_data* pData = (hosirrlib_data*)(hHS);
 
     // pending initializations
@@ -307,7 +314,8 @@ void hosirrlib_setUninitialized(void* const hHS)
 void hosirrlib_initBandProcessing(void* const hHS, ANALYSIS_STAGE thisStage)
 {
     hosirrlib_data* pData = (hosirrlib_data*)(hHS);
-
+    fflush(stdout); // flush printf's buffer
+    
     checkProperProcessingOrder(pData, thisStage, __func__);
 
     /* Initialize octave band filters
@@ -359,6 +367,8 @@ void hosirrlib_initBandProcessing(void* const hHS, ANALYSIS_STAGE thisStage)
     // hosirrlib_inspectFilts(pData); // dbg func
 
     pData->analysisStage = thisStage;
+    
+    fflush(stdout); // flush printf's buffer
 }
 
 // (re)allocate the buffers used for storing intermediate processing data
@@ -413,7 +423,6 @@ void hosirrlib_allocProcBufs(void* const hHS, ANALYSIS_STAGE thisStage)
 void hosirrlib_renderTMP(void* const hHS)
 {
     hosirrlib_data* pData = (hosirrlib_data*)(hHS);
-    printf("\nrenderTMP called.\n"); // dbg
 
     /* Check if processing should actually go-ahead */
     if (pData->ambiRIR_status != AMBI_RIR_STATUS_LOADED
@@ -426,7 +435,8 @@ void hosirrlib_renderTMP(void* const hHS)
     strcpy(pData->progressText, "Processing");
 
     hosirrlib_processRIR(pData, DIRGAIN_DONE);
-
+    fflush(stdout); // flush printf's buffer
+    
     /* indicate that rendering is complete */
     pData->progress0_1 = 1.0f;
     pData->lsRIR_status = LS_RIR_STATUS_RENDERED;
@@ -435,7 +445,8 @@ void hosirrlib_renderTMP(void* const hHS)
 void hosirrlib_processRIR(void* const hHS, ANALYSIS_STAGE endStage)
 {
     hosirrlib_data* pData = (hosirrlib_data*)(hHS);
-
+    fflush(stdout); // flush printf's buffer
+    
     ANALYSIS_STAGE requiredPreviousStage = ANALYSIS_BUFS_LOADED;
     checkProperProcessingOrder(pData, requiredPreviousStage, __func__);
 

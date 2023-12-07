@@ -1542,10 +1542,8 @@ void checkProperProcessingOrder(void* const hHS, ANALYSIS_STAGE currentStage, co
     if (pData->analysisStage < currentStage - 1) {
         fprintf(stderr, "ERROR [srirlib]");
         fprintf(stderr, " %s (%d)", funcName, (int)currentStage);
-        fprintf(stderr,
-            " was called before required processing stages "
-            "were completed (currently at %d).\n",
-            (int)pData->analysisStage);
+        fprintf(stderr, " was called before required processing stages "
+  "were completed (currently at %d).\n", (int)pData->analysisStage);
         exit(EXIT_FAILURE);
     }
 }

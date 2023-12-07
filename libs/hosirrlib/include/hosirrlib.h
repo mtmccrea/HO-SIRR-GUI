@@ -12,6 +12,38 @@
 #ifndef __HOSIRRLIB_H_INCLUDED__
 #define __HOSIRRLIB_H_INCLUDED__
 
+#include <stdarg.h>
+#include <stdio.h>
+
+// Define logging levels
+#define LOG_LEVEL_NONE 0
+#define LOG_LEVEL_BASIC 1
+#define LOG_LEVEL_VERBOSE 2
+#define LOG_LEVEL_DEBUG 3
+
+// Define default logging level
+#ifndef LOG_LEVEL_RUNTIME
+#define LOG_LEVEL_RUNTIME LOG_LEVEL_DEBUG
+#endif
+
+// Define common logging macro
+#if defined(__cplusplus)
+#include <iostream>
+#define LIBLOG(level, msg, ...)                                                                    \
+    do {                                                                                           \
+        if (level <= LOG_LEVEL_RUNTIME) {                                                          \
+            std::cout << msg << std::endl;                                                         \
+        }                                                                                          \
+    } while (0)
+#else
+#define LIBLOG(level, msg, ...)                                                                    \
+    do {                                                                                           \
+        if (level <= LOG_LEVEL_RUNTIME) {                                                          \
+            fprintf(stderr, msg "\n", ##__VA_ARGS__);                                              \
+        }                                                                                          \
+    } while (0)
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -179,6 +211,16 @@ extern "C"
                                         *   channels was loaded, and will not be
                                         *   used for rendering */
     } AMBI_RIR_STATUS;
+
+    /**
+     * Logging level
+     */
+    typedef enum _LOG_LEVEL
+    {
+        LGDATA = 1, /**< Output results from analysis */
+        LGDBG1, /**< Output basid debugging, like function calls */
+        LGDBG2 /**< Output detailed debugging */
+    } LOG_LEVEL;
 
     /**
      * Statis of the loudspeaker RIR

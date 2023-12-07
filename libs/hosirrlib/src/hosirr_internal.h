@@ -20,11 +20,14 @@
 #include "saf.h"
 #include "saf_externals.h" // to also include saf dependencies (cblas etc.)
 
-#include <complex.h> // For C99 complex types
-
 #ifdef __cplusplus
 #include <cmath> // For std::exp
 #include <complex> // For C++ complex types
+#else
+#include <complex.h> // For C99 complex types
+#endif
+
+#ifdef __cplusplus
 extern "C"
 {
 #endif /* __cplusplus */
@@ -64,13 +67,13 @@ extern "C"
 /** Macro to print a warning message along with the filename and line number */
 #define hosirr_print_warning(message)                                                              \
     {                                                                                              \
-        fprintf(stdout, "\nRIRLIB WARNING: %s [%s LINE %u] \n", message, __FILE__, __LINE__);      \
+        fprintf(stdout, "RIRLIB WARNING: %s [%s LINE %u] \n", message, __FILE__, __LINE__);        \
     }
 
 /** Macro to print a error message along with the filename and line number */
 #define hosirr_print_error(message)                                                                \
     {                                                                                              \
-        fprintf(stderr, "\nRIRLIB ERROR: %s [%s LINE %u] \n", message, __FILE__, __LINE__);        \
+        fprintf(stderr, "RIRLIB ERROR: %s [%s LINE %u] \n", message, __FILE__, __LINE__);          \
         exit(EXIT_FAILURE);                                                                        \
     }
 
@@ -177,10 +180,9 @@ extern "C"
     //                                float dirs_deg[MAX_NUM_LOUDSPEAKERS_IN_PRESET][2],
     //                                int* nCH);
 
-    void loadSphDesignPreset(SPHDESIGN_PRESETS preset,
-        float dirs_deg[MAX_NUM_LOUDSPEAKERS_IN_PRESET]
-                      [2], // TODO: SPHDESIGNs coincide with LS arrays for now
-        int* nCH);
+    // TODO: SPHDESIGNs coincide with LS arrays for now
+    void loadSphDesignPreset(
+        SPHDESIGN_PRESETS preset, float dirs_deg[MAX_NUM_LOUDSPEAKERS_IN_PRESET][2], int* nCH);
 
     /* ========================================================================== */
     /*                            FIR Filter Functions                            */
@@ -273,9 +275,9 @@ extern "C"
         float_complex h_z_sum;
 
         h_len = order + 1;
-        ft1 = fc1
-            / fs; // corrected, was ft1 = fc1/(fs*2.0f); see §8.1.1, J. G. Proakis and D. G.
-                  // Manolakis, Digital Signal Processing: Principles, Algorithms, and Applications.
+        // corrected, was ft1 = fc1/(fs*2.0f); see §8.1.1, J. G. Proakis and D. G.
+        // Manolakis, Digital Signal Processing: Principles, Algorithms, and Applications.
+        ft1 = fc1 / fs;
 
         /* compute filter weights */
         if (order % 2 == 0) {
@@ -338,8 +340,8 @@ extern "C"
                     h_filt[i] /= h_sum;
                 break;
 #ifdef __cplusplus
-            // TODO: ifdef here not awesome, colliding complex types/functions when compiling in C++
-            // project!
+            // TODO: ifdef here not awesome:
+            // colliding complex types/functions when compiling in C++ project!
             case FIR_FILTER_HPF:
                 f0 = 1.0f;
                 h_z_sum = cmplxf(0.0f, 0.0f);
